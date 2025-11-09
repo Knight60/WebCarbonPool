@@ -546,7 +546,7 @@ const HomePage: React.FC = () => {
 
       {/* Objectives Section */}
       <section>
-        <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 text-center">วัตถุประสงค์หลัก 4 ประการ</h2>
+        <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 text-center">วัตถุประสงค์โครงการ</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {objectives.map((obj) => (
             <ObjectiveCard key={obj.title} icon={obj.icon} title={obj.title} description={obj.description} />
