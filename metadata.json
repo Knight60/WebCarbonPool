@@ -1,0 +1,8 @@
+
+{
+  "name": "Carbon Pool Assessment Platform",
+  "description": "A web application for the project on developing a carbon pool assessment system for urban green areas in Thailand. It features project information, survey plot data, spatial analysis, AI-powered plant identification, and open data access.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
