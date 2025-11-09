@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
       // Vite replaces this with the value of process.env.API_KEY at build time.
       'process.env.API_KEY': JSON.stringify(env.API_KEY)
     },
+    base: '/carbonpool/',
     server: {
       port: 3333,
       open: true, // Automatically open the app in the browser on server start
