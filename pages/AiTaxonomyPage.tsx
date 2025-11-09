@@ -1,14 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react'; // <-- ไม่เปลี่ยนแปลง
 import { UploadIcon, CameraIcon, XCircleIcon } from '../components/icons';
 
-// --- START: Interface ใหม่สำหรับ History ---
 interface HistoryItem {
-  source: string; // Base64 image data URL
+  source: string;
   filename: string;
-  commonName: string; // <-- เพิ่ม field นี้
-  predicted: [string, string]; // [scientificName, confidence]
+  commonName: string;
+  predicted: [string, string];
 }
-// --- END: History Item Interface ---
 
 interface IdentificationResult {
   commonName: string;
@@ -141,6 +139,27 @@ const AiTaxonomyPage: React.FC = () => {
   const [sessionToken, setSessionToken] = useState<string>('New');
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
+  // --- START: อัปเดต useEffect สำหรับเปลี่ยน URL ---
+  useEffect(() => {
+    // import.meta.env.BASE_URL คือค่า {base} จาก vite.config.ts
+    // (เช่น "/" หรือ "/my-app/" หรือ "/my-app")
+    const base = import.meta.env.BASE_URL;
+
+    // สร้าง path ให้ถูกต้อง (ป้องกัน /my-app/AiTaxonomy หรือ /my-appAiTaxonomy)
+    // 1. ถ้า base คือ "/" ให้ใช้ "/AiTaxonomy"
+    // 2. ถ้า base ลงท้ายด้วย "/" (เช่น "/my-app/") ให้ต่อ "AiTaxonomy"
+    // 3. ถ้า base ไม่ลงท้ายด้วย "/" (เช่น "/my-app") ให้ต่อ "/AiTaxonomy"
+    const targetPath = base === '/' 
+      ? '/AiTaxonomy'
+      : (base.endsWith('/') ? `${base}AiTaxonomy` : `${base}/AiTaxonomy`);
+
+    // เปลี่ยน URL ถ้า path ปัจจุบันไม่ตรงกับ target
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+  }, []); // [] dependency array หมายความว่า effect นี้จะรันแค่ครั้งเดียวตอน component โหลด
+  // --- END: อัปเดต useEffect ---
+
   const handleFileSelect = async (file: File | null | undefined) => {
     if (!file) return;
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
@@ -189,7 +208,6 @@ const AiTaxonomyPage: React.FC = () => {
     }
   }
 
-  // --- START: อัปเดต handleSubmit ---
   const handleSubmit = async () => {
     if (!image) {
       setError('กรุณาเลือกรูปภาพก่อน');
@@ -237,7 +255,6 @@ const AiTaxonomyPage: React.FC = () => {
       const source = data.source; 
       const filename = data.filename;
 
-      // --- ค้นหาชื่อสามัญ ---
       const matchingSpecies = supportedSpecies.find(
         (species) => species.scientific.startsWith(scientificNameFromApi)
       );
@@ -245,18 +262,16 @@ const AiTaxonomyPage: React.FC = () => {
         ? matchingSpecies.common.replace(/\(\d+\)\s/, '') 
         : "ไม่พบชื่อในลิสต์ 60 ชนิด";
 
-      // --- เพิ่มรายการใน History (พร้อม commonName) ---
       setHistory(prevHistory => [
         ...prevHistory,
         {
           source: source,
           filename: filename,
-          commonName: commonName, // <-- เพิ่มชื่อสามัญที่นี่
+          commonName: commonName, 
           predicted: [scientificNameFromApi, confidence]
         }
       ]);
 
-      // --- ตั้งค่าผลลัพธ์หลัก ---
       setResult({
         commonName: commonName,
         scientificName: matchingSpecies ? matchingSpecies.scientific : scientificNameFromApi,
@@ -276,7 +291,6 @@ const AiTaxonomyPage: React.FC = () => {
       setIsLoading(false);
     }
   };
-  // --- END: อัปเดต handleSubmit ---
 
   const handleResetSession = () => {
     setImage(null);
@@ -366,7 +380,6 @@ const AiTaxonomyPage: React.FC = () => {
           {/* Right Column: Result & History */}
           <div className="bg-slate-50 p-6 rounded-lg min-h-[300px] flex flex-col">
             
-            {/* 1. ส่วนผลลัพธ์หลัก (Current Result) */}
             <div className="flex-grow min-h-[150px] flex flex-col justify-center">
               {isLoading && (
                 <div className="space-y-4 animate-pulse">
@@ -399,7 +412,6 @@ const AiTaxonomyPage: React.FC = () => {
               )}
             </div>
 
-            {/* --- START: อัปเดตส่วน History --- */}
             {history.length > 0 && (
               <div className="mt-6 pt-6 border-t border-slate-300">
                 <h3 className="text-lg font-bold text-slate-800 mb-3">
@@ -410,7 +422,6 @@ const AiTaxonomyPage: React.FC = () => {
                     <div key={index} className="border rounded-lg overflow-hidden shadow-sm bg-white">
                       <img src={item.source} alt={item.commonName} className="w-full h-24 object-cover" />
                       <div className="p-2 text-xs">
-                        {/* เปลี่ยนจาก item.filename เป็น item.commonName */}
                         <p className="font-semibold truncate" title={item.commonName}>{item.commonName}</p>
                         <p className="text-slate-600 truncate" title={item.predicted[0]}>{item.predicted[0]}</p>
                         <p className="text-slate-500">{item.predicted[1]}</p>
@@ -427,7 +438,6 @@ const AiTaxonomyPage: React.FC = () => {
                 </button>
               </div>
             )}
-            {/* --- END: อัปเดตส่วน History --- */}
 
           </div>
         </div>
