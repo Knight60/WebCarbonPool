@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react'; // <-- ไม่เปลี่ยนแปลง
-import { UploadIcon, CameraIcon, XCircleIcon } from '../components/icons';
+import React, { useState, useRef, useEffect } from 'react';
+import { UploadIcon, CameraIcon } from '../components/icons'; // <-- แก้ไขแล้ว
 
 interface HistoryItem {
   source: string;
@@ -141,23 +141,15 @@ const AiTaxonomyPage: React.FC = () => {
 
   // --- START: อัปเดต useEffect สำหรับเปลี่ยน URL ---
   useEffect(() => {
-    // import.meta.env.BASE_URL คือค่า {base} จาก vite.config.ts
-    // (เช่น "/" หรือ "/my-app/" หรือ "/my-app")
     const base = import.meta.env.BASE_URL;
-
-    // สร้าง path ให้ถูกต้อง (ป้องกัน /my-app/AiTaxonomy หรือ /my-appAiTaxonomy)
-    // 1. ถ้า base คือ "/" ให้ใช้ "/AiTaxonomy"
-    // 2. ถ้า base ลงท้ายด้วย "/" (เช่น "/my-app/") ให้ต่อ "AiTaxonomy"
-    // 3. ถ้า base ไม่ลงท้ายด้วย "/" (เช่น "/my-app") ให้ต่อ "/AiTaxonomy"
     const targetPath = base === '/' 
       ? '/AiTaxonomy'
       : (base.endsWith('/') ? `${base}AiTaxonomy` : `${base}/AiTaxonomy`);
 
-    // เปลี่ยน URL ถ้า path ปัจจุบันไม่ตรงกับ target
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
     }
-  }, []); // [] dependency array หมายความว่า effect นี้จะรันแค่ครั้งเดียวตอน component โหลด
+  }, []); // [] dependency array
   // --- END: อัปเดต useEffect ---
 
   const handleFileSelect = async (file: File | null | undefined) => {
