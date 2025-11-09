@@ -1,12 +1,22 @@
 import React, { useState, useRef } from 'react';
 import { UploadIcon, CameraIcon, XCircleIcon } from '../components/icons';
 
+// --- START: Interface ใหม่สำหรับ History ---
+interface HistoryItem {
+  source: string; // Base64 image data URL
+  filename: string;
+  commonName: string; // <-- เพิ่ม field นี้
+  predicted: [string, string]; // [scientificName, confidence]
+}
+// --- END: History Item Interface ---
+
 interface IdentificationResult {
   commonName: string;
   scientificName: string;
   description: string;
 }
 
+// --- START: Supported Species Data (ไม่เปลี่ยนแปลง) ---
 const supportedSpecies = [
     { common: "(1) แสมขาว", scientific: "Avicennia alba Blume" },
     { common: "(2) อโศกอินเดีย", scientific: "Monoon longifolium (Sonn.) B.Xue & R.M.K.Saunders" },
@@ -69,20 +79,9 @@ const supportedSpecies = [
     { common: "(59) คำมอกหลวง", scientific: "Gardenia sootepensis Hutch." },
     { common: "(60) พิกุล", scientific: "Mimusops elengi L." },
 ];
+// --- END: Supported Species Data ---
 
-const imageTypeOptions = [
-  { value: "bark", label: "เปลือก" },
-  { value: "tree", label: "ทรงพุ่ม" },
-  { value: "lbup", label: "ด้านบนใบติดกิ่ง" },
-  { value: "lbun", label: "ด้านล่างใบติดกิ่ง" },
-  { value: "lfup", label: "ด้านบนใบเดี่ยว" },
-  { value: "lfun", label: "ด้านล่างใบเดี่ยว" },
-  { value: "llup", label: "ด้านบนใบย่อย" },
-  { value: "llun", label: "ด้านล่างใบย่อย" },
-  { value: "flow", label: "ดอก" },
-  { value: "frui", label: "ผล" },
-];
-
+// --- START: File Conversion Function (ไม่เปลี่ยนแปลง) ---
 const convertFileToJpg = (file: File): Promise<File> => {
   return new Promise((resolve, reject) => {
     if (file.type === 'image/jpeg') {
@@ -128,6 +127,7 @@ const convertFileToJpg = (file: File): Promise<File> => {
     reader.onerror = (error) => reject(error);
   });
 };
+// --- END: File Conversion Function ---
 
 
 const AiTaxonomyPage: React.FC = () => {
@@ -137,8 +137,9 @@ const AiTaxonomyPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [imageType, setImageType] = useState<string>('bark');
 
+  const [sessionToken, setSessionToken] = useState<string>('New');
+  const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const handleFileSelect = async (file: File | null | undefined) => {
     if (!file) return;
@@ -149,7 +150,7 @@ const AiTaxonomyPage: React.FC = () => {
     }
     setIsLoading(true);
     setError(null);
-    setResult(null);
+    setResult(null); 
     try {
       const jpgFile = await convertFileToJpg(file);
       setImage(jpgFile);
@@ -180,6 +181,15 @@ const AiTaxonomyPage: React.FC = () => {
     fileInputRef.current?.click();
   };
 
+  const clearSubmittedFile = () => {
+    setImage(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  // --- START: อัปเดต handleSubmit ---
   const handleSubmit = async () => {
     if (!image) {
       setError('กรุณาเลือกรูปภาพก่อน');
@@ -191,9 +201,9 @@ const AiTaxonomyPage: React.FC = () => {
     setResult(null);
 
     const formData = new FormData();
-    formData.append('token', 'New');
+    formData.append('token', sessionToken);
     formData.append('email', 'pisut.nak@gmail.com');
-    formData.append('type', imageType);
+    formData.append('type', 'null');
     formData.append('image', image);
 
     const fetchOptions: RequestInit = {
@@ -219,32 +229,41 @@ const AiTaxonomyPage: React.FC = () => {
         throw new Error('ไม่พบผลลัพธ์การทำนายจากเซิร์ฟเวอร์');
       }
 
-      // 4. แปลงผลลัพธ์เพื่อแสดงผล
-      const topPrediction = data.predicted[0]; // e.g., ["Avicennia alba", "99.9%"]
-      const scientificNameFromApi = topPrediction[0]; // e.g., "Avicennia alba"
-      const confidence = topPrediction[1];
+      setSessionToken(data.token);
 
-      // --- START: MODIFIED LOGIC ---
-      // ค้นหาชื่อสามัญโดยเทียบว่า "ชื่อในลิสต์" (ตัวเต็ม)
-      // "เริ่มต้นด้วย" "ชื่อจาก API" (ตัวย่อ/ไม่มี Author) หรือไม่
+      const topPrediction = data.predicted[0];
+      const scientificNameFromApi = topPrediction[0];
+      const confidence = topPrediction[1];
+      const source = data.source; 
+      const filename = data.filename;
+
+      // --- ค้นหาชื่อสามัญ ---
       const matchingSpecies = supportedSpecies.find(
         (species) => species.scientific.startsWith(scientificNameFromApi)
       );
-
-      // ลบ (N) ออกจากชื่อ
       const commonName = matchingSpecies 
         ? matchingSpecies.common.replace(/\(\d+\)\s/, '') 
-        : "ไม่พบชื่อในลิสต์ 60 ชนิด"; // แจ้งว่าหาไม่เจอ
+        : "ไม่พบชื่อในลิสต์ 60 ชนิด";
 
-      // ตั้งค่า state
+      // --- เพิ่มรายการใน History (พร้อม commonName) ---
+      setHistory(prevHistory => [
+        ...prevHistory,
+        {
+          source: source,
+          filename: filename,
+          commonName: commonName, // <-- เพิ่มชื่อสามัญที่นี่
+          predicted: [scientificNameFromApi, confidence]
+        }
+      ]);
+
+      // --- ตั้งค่าผลลัพธ์หลัก ---
       setResult({
         commonName: commonName,
-        // ถ้าเจอในลิสต์ ให้ใช้ชื่อเต็มจากลิสต์ (สวยกว่า)
-        // ถ้าไม่เจอ ก็ใช้ชื่อที่ API ส่งมา
         scientificName: matchingSpecies ? matchingSpecies.scientific : scientificNameFromApi,
-        description: `ความมั่นใจ: ${confidence}` // ใช้ description field เพื่อแสดงค่าความมั่นใจ
+        description: `ความมั่นใจ: ${confidence}`
       });
-      // --- END: MODIFIED LOGIC ---
+
+      clearSubmittedFile();
 
     } catch (err) {
       console.error(err);
@@ -255,6 +274,19 @@ const AiTaxonomyPage: React.FC = () => {
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+  // --- END: อัปเดต handleSubmit ---
+
+  const handleResetSession = () => {
+    setImage(null);
+    setPreviewUrl(null);
+    setError(null);
+    setResult(null);
+    setSessionToken('New');
+    setHistory([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -271,24 +303,6 @@ const AiTaxonomyPage: React.FC = () => {
         <div className="grid md:grid-cols-2 gap-6 items-start">
           {/* Left Column: Upload & Preview */}
           <div className="space-y-4">
-
-            <div>
-              <label htmlFor="image-type" className="block text-sm font-medium text-slate-700 mb-1">
-                ชนิดของภาพ (Type)
-              </label>
-              <select
-                id="image-type"
-                value={imageType}
-                onChange={(e) => setImageType(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500"
-              >
-                {imageTypeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
 
             {!previewUrl && (
               <div 
@@ -345,49 +359,81 @@ const AiTaxonomyPage: React.FC = () => {
               disabled={!image || isLoading}
               className="w-full px-4 py-3 bg-emerald-500 text-white rounded-lg shadow-sm hover:bg-emerald-600 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed font-bold text-lg"
             >
-              {isLoading ? 'กำลังประมวลผล...' : 'ระบุชนิดพันธุ์ไม้'}
+              {isLoading ? 'กำลังประมวลผล...' : (sessionToken === 'New' ? 'ระบุชนิดพันธุ์ไม้' : 'ส่งภาพเพิ่มเติม')}
             </button>
           </div>
 
-          {/* Right Column: Result */}
-          <div className="bg-slate-50 p-6 rounded-lg min-h-[300px] flex flex-col justify-center">
-            {isLoading && (
-              <div className="space-y-4 animate-pulse">
-                <div className="h-6 bg-slate-300 rounded w-3/4"></div>
-                <div className="h-4 bg-slate-300 rounded w-1/2"></div>
-                <div className="h-4 bg-slate-300 rounded w-full"></div>
-                <div className="h-4 bg-slate-300 rounded w-full"></div>
-                <div className="h-4 bg-slate-300 rounded w-5/6"></div>
+          {/* Right Column: Result & History */}
+          <div className="bg-slate-50 p-6 rounded-lg min-h-[300px] flex flex-col">
+            
+            {/* 1. ส่วนผลลัพธ์หลัก (Current Result) */}
+            <div className="flex-grow min-h-[150px] flex flex-col justify-center">
+              {isLoading && (
+                <div className="space-y-4 animate-pulse">
+                  <div className="h-6 bg-slate-300 rounded w-3/4"></div>
+                  <div className="h-4 bg-slate-300 rounded w-1/2"></div>
+                  <div className="h-4 bg-slate-300 rounded w-full"></div>
+                </div>
+              )}
+              {error && <p className="text-red-600 text-center">{error}</p>}
+              {result && !isLoading && (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-500">ผลลัพธ์ล่าสุด</h3>
+                    <p className="text-2xl font-bold text-emerald-600">{result.commonName}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-500">ชื่อวิทยาศาสตร์</h3>
+                    <p className="text-lg font-medium text-slate-800 italic">{result.scientificName}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-500">รายละเอียด</h3>
+                    <p className="text-base text-slate-700 leading-relaxed">{result.description}</p>
+                  </div>
+                </div>
+              )}
+              {!isLoading && !error && !result && (
+                <div className="text-center text-slate-500">
+                  <p>ผลลัพธ์การระบุชนิดพันธุ์ไม้จะแสดงที่นี่</p>
+                </div>
+              )}
+            </div>
+
+            {/* --- START: อัปเดตส่วน History --- */}
+            {history.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-slate-300">
+                <h3 className="text-lg font-bold text-slate-800 mb-3">
+                  ประวัติการส่งภาพ ({history.length} ภาพ)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {[...history].reverse().map((item, index) => (
+                    <div key={index} className="border rounded-lg overflow-hidden shadow-sm bg-white">
+                      <img src={item.source} alt={item.commonName} className="w-full h-24 object-cover" />
+                      <div className="p-2 text-xs">
+                        {/* เปลี่ยนจาก item.filename เป็น item.commonName */}
+                        <p className="font-semibold truncate" title={item.commonName}>{item.commonName}</p>
+                        <p className="text-slate-600 truncate" title={item.predicted[0]}>{item.predicted[0]}</p>
+                        <p className="text-slate-500">{item.predicted[1]}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={handleResetSession}
+                  className="mt-4 w-full px-4 py-2 bg-slate-500 text-white rounded-lg shadow-sm hover:bg-slate-600 transition-colors font-semibold text-sm"
+                >
+                  เริ่มการจำแนกต้นใหม่ (ล้างประวัติ)
+                </button>
               </div>
             )}
-            {error && <p className="text-red-600 text-center">{error}</p>}
-            {result && !isLoading && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-500">ชื่อสามัญ</h3>
-                  <p className="text-2xl font-bold text-emerald-600">{result.commonName}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-500">ชื่อวิทยาศาสตร์</h3>
-                  <p className="text-lg font-medium text-slate-800 italic">{result.scientificName}</p>
-_
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-500">รายละเอียด</h3>
-                  <p className="text-base text-slate-700 leading-relaxed">{result.description}</p>
-                </div>
-              </div>
-            )}
-            {!isLoading && !error && !result && (
-              <div className="text-center text-slate-500">
-                <p>ผลลัพธ์การระบุชนิดพันธุ์ไม้จะแสดงที่นี่</p>
-              </div>
-            )}
+            {/* --- END: อัปเดตส่วน History --- */}
+
           </div>
         </div>
       </div>
 
-      {/* --- Supported Species Section --- */}
+      {/* --- Supported Species Section (ไม่เปลี่ยนแปลง) --- */}
       <div className="bg-white p-6 rounded-xl shadow-sm">
         <h2 className="text-2xl font-bold text-slate-800 mb-4">
           ชนิดพันธุ์ที่รองรับ (60 ชนิด)
