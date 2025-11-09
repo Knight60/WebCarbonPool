@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { UploadIcon, CameraIcon } from '../components/icons';
@@ -8,6 +7,71 @@ interface IdentificationResult {
   scientificName: string;
   description: string;
 }
+
+// --- START: Supported Species Data ---
+const supportedSpecies = [
+  { common: "(1) แสมขาว", scientific: "Avicennia alba Blume" },
+  { common: "(2) อโศกอินเดีย", scientific: "Monoon longifolium (Sonn.) B.Xue & R.M.K.Saunders" },
+  { common: "(3) ลำดวน", scientific: "Sphaerocoryne lefevrei (Baill.) D.M.Johnson & N.A.Murray" },
+  { common: "(4) สัตตบรรณ", scientific: "Alstonia scholaris (L.) R.Br." },
+  { common: "(5) ตีนเป็ดทะเล", scientific: "Cerbera odollam Gaertn." },
+  { common: "(6) โมกมัน", scientific: "Wrightia arborea (Dennst.) Mabb." },
+  { common: "(7) แคนา", scientific: "Dolichandrone serrulata (Wall. ex DC.) Seem." },
+  { common: "(8) ปีบ", scientific: "Millingtonia hortensis L.f." },
+  { common: "(9) ชมพูพันธุ์ทิพย์", scientific: "Tabebuia rosea (Bertol.) DC." },
+  { common: "(10) กระทิง", scientific: "Calophyllum inophyllum L." },
+  { common: "(11) สารภี", scientific: "Mammea siamensis (Miq.) T.Anderson" },
+  { common: "(12) สนทะเล", scientific: "Casuarina equisetifolia L." },
+  { common: "(13) สมอพิเภก", scientific: "Terminalia bellirica (Gaertn.) Roxb." },
+  { common: "(14) หูกวาง", scientific: "Terminalia catappa L." },
+  { common: "(15) หูกระจง", scientific: "Terminalia ivorensis A.Chev." },
+  { common: "(16) พะยอม", scientific: "Anthoshorea roxburghii (G.Don) P.S.Ashton & J.Heck." },
+  { common: "(17) ยางนา", scientific: "Dipterocarpus alatus Roxb. ex G.Don" },
+  { common: "(18) ตะเคียนทอง", scientific: "Hopea odorata Roxb." },
+  { common: "(19) รัง", scientific: "Pentacme siamensis (Miq.) Kurz" },
+  { common: "(20) เต็ง", scientific: "Shorea obtusa Wall. ex Blume" },
+  { common: "(21) ยางพารา", scientific: "Hevea brasiliensis (Willd. ex A.Juss.) Müll.Arg." },
+  { common: "(22) กระถินณรงค์", scientific: "Acacia auriculiformis A.Cunn. ex Benth." },
+  { common: "(23) กระถินเทพา", scientific: "Acacia mangium Willd." },
+  { common: "(24) มะค่าโมง", scientific: "Afzelia xylocarpa (Kurz) Craib" },
+  { common: "(25) พฤกษ์", scientific: "Albizia lebbeck (L.) Benth." },
+  { common: "(26) ทองกวาว", scientific: "Butea monosperma (Lam.) Kuntze" },
+  { common: "(27) กัลปพฤกษ์", scientific: "Cassia bakeriana Craib" },
+  { common: "(28) คูน", scientific: "Cassia fistula L." },
+  { common: "(29) พะยูง", scientific: "Dalbergia cochinchinensis Pierre" },
+  { common: "(30) ฉนวน", scientific: "Dalbergia nigrescens Kurz" },
+  { common: "(31) หางนกยูงฝรั่ง", scientific: "Delonix regia (Bojer ex Hook.) Raf." },
+  { common: "(32) เขลง", scientific: "Dialium cochinchinense Pierre" },
+  { common: "(33) อะราง", scientific: "Peltophorum dasyrhachis (Miq.) Kurz" },
+  { common: "(34) นนทรี", scientific: "Peltophorum pterocarpum (DC.) Backer ex K.Heyne" },
+  { common: "(35) ประดู่บ้าน", scientific: "Pterocarpus indicus Willd." },
+  { common: "(36) ประดู่ป่า", scientific: "Pterocarpus macrocarpus Kurz" },
+  { common: "(37) จามจุรี", scientific: "Samanea saman (Jacq.) Merr." },
+  { common: "(38) ขี้เหล็ก", scientific: "Senna siamea (Lam.) H.S.Irwin & Barneby" },
+  { common: "(39) มะค่าแต้", scientific: "Sindora siamensis Teijsm. ex Miq." },
+  { common: "(40) มะขาม", scientific: "Tamarindus indica L." },
+  { common: "(41) แดง", scientific: "Xylia xylocarpa var. kerrii (Craib & Hutch.) I.C.Nielsen" },
+  { common: "(42) สัก", scientific: "Tectona grandis L.f." },
+  { common: "(43) จิกน้ำ", scientific: "Barringtonia acutangula (L.) Gaertn." },
+  { common: "(44) กระโดน", scientific: "Careya arborea Roxb." },
+  { common: "(45) ตะแบกนา", scientific: "Lagerstroemia floribunda Jack" },
+  { common: "(46) อินทรชิต", scientific: "Lagerstroemia loudonii Teijsm. & Binn." },
+  { common: "(47) อินทนิลน้ำ", scientific: "Lagerstroemia speciosa (L.) Pers." },
+  { common: "(48) จำปี", scientific: "Magnolia × alba (DC.) Figlar" },
+  { common: "(49) สะเดา", scientific: "Azadirachta indica A.Juss." },
+  { common: "(50) มะฮอกกานีใบใหญ่", scientific: "Swietenia macrophylla King" },
+  { common: "(51) ขนุน", scientific: "Artocarpus heterophyllus Lam." },
+  { common: "(52) ไทรย้อยใบแหลม", scientific: "Ficus benjamina L." },
+  { common: "(53) โพศรีมหาโพ", scientific: "Ficus religiosa L." },
+  { common: "(54) โพขี้นก", scientific: "Ficus rumphii Blume" },
+  { common: "(55) ข่อย", scientific: "Streblus asper Lour." },
+  { common: "(56) หว้า", scientific: "Syzygium cumini (L.) Skeels" },
+  { common: "(57) โกงกางใบเล็ก", scientific: "Rhizophora apiculata Blume" },
+  { common: "(58) โกงกางใบใหญ่", scientific: "Rhizophora mucronata Poir." },
+  { common: "(59) คำมอกหลวง", scientific: "Gardenia sootepensis Hutch." },
+  { common: "(60) พิกุล", scientific: "Mimusops elengi L." },
+];
+// --- END: Supported Species Data ---
 
 const AiTaxonomyPage: React.FC = () => {
   const [image, setImage] = useState<File | null>(null);
@@ -87,7 +151,7 @@ const AiTaxonomyPage: React.FC = () => {
         },
       });
 
-const jsonText = (response.text ?? '').trim();
+      const jsonText = (response.text ?? '').trim();
       const parsedResult: IdentificationResult = JSON.parse(jsonText);
       setResult(parsedResult);
 
@@ -119,7 +183,9 @@ const jsonText = (response.text ?? '').trim();
               onDragOver={(e) => e.preventDefault()}
             >
               <UploadIcon className="mx-auto h-12 w-12 text-slate-400" />
+              {/* --- START: FIXED LINE 1 --- */}
               <p className="mt-2 text-sm text-slate-600">ลากและวางไฟล์ที่นี่ หรือคลิกเพื่ออัปโหลด</p>
+              {/* --- END: FIXED LINE 1 --- */}
               <p className="text-xs text-slate-500">PNG, JPG, WEBP</p>
             </div>
             <input
@@ -192,6 +258,27 @@ const jsonText = (response.text ?? '').trim();
           </div>
         </div>
       </div>
+
+      {/* --- Supported Species Section (Updated) --- */}
+      <div className="bg-white p-6 rounded-xl shadow-sm">
+        <h2 className="text-2xl font-bold text-slate-800 mb-4">
+          ชนิดพันธุ์ที่รองรับ (60 ชนิด)
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
+          {supportedSpecies.map((species) => (
+            <div key={species.scientific}>
+              <p className="text-slate-800 font-medium">{species.common}</p>
+              {/* --- START: FIXED LINE 2 & 3 --- */}
+              <p className="text-sm text-slate-500 italic truncate" title={species.scientific}>
+                {species.scientific}
+              </p>
+              {/* --- END: FIXED LINE 2 & 3 --- */}
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* --- END: Supported Species Section --- */}
+
     </div>
   );
 };
