@@ -4,6 +4,9 @@ import { Plot, Species } from '../types';
 import { useSurveyData } from '../hooks/useSurveyData';
 import { useSpeciesData } from '../hooks/useSpeciesData';
 
+import aiSpatialImage from '../data/AiSpatial.png'; 
+import aiTaxonomyImage from '../data/AiTaxonomy.png';
+
 // --- Page Components ---
 
 const StatCard: React.FC<{ value: string; label: string; description: string }> = ({ value, label, description }) => (
@@ -494,7 +497,7 @@ const HomePage: React.FC = () => {
               </div>
             </div>
             <div className="w-full lg:w-1/2 mt-6 lg:mt-0">
-                <img src="./data/AiSpatial.png" alt="แผนที่แสดงผลการวิเคราะห์เชิงพื้นที่" className="rounded-lg shadow-lg w-full h-auto object-cover" />
+                <img src={aiSpatialImage} alt="แผนที่แสดงผลการวิเคราะห์เชิงพื้นที่" className="rounded-lg shadow-lg w-full h-auto object-cover" />
             </div>
           </div>
         </section>
@@ -506,7 +509,7 @@ const HomePage: React.FC = () => {
           </h2>
           <div className="bg-white p-6 md:p-8 rounded-xl shadow-sm flex flex-col lg:flex-row items-center gap-8">
             <div className="w-full lg:w-1/2">
-                <img src="./data/AiTaxonomy.png" alt="AI Taxonomy plant identification app interface on a smartphone" className="rounded-lg shadow-lg w-full h-auto object-cover" />
+                <img src={aiTaxonomyImage} alt="AI Taxonomy plant identification app interface on a smartphone" className="rounded-lg shadow-lg w-full h-auto object-cover" />
             </div>
             <div className="w-full lg:w-1/2 mt-6 lg:mt-0">
               <h3 className="text-xl font-semibold text-slate-700 mb-4">การพัฒนาแบบจำลอง AI เพื่อการระบุชนิดพันธุ์พืช</h3>
