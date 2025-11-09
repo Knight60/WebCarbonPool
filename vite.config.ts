@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
       'process.env.API_KEY': JSON.stringify(env.API_KEY)
     },
     server: {
-      port: 3000,
+      port: 3333,
       open: true, // Automatically open the app in the browser on server start
     },
     build: {
