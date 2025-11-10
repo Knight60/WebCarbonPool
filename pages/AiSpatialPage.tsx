@@ -7,7 +7,6 @@ import { OSM, XYZ, TileWMS, Tile as TileSource } from 'ol/source';
 import { fromLonLat, transformExtent } from 'ol/proj';
 import { Extent } from 'ol/extent';
 import { defaults as defaultControls } from 'ol/control';
-// 1. Import Icon เพิ่ม: ArrowRightLeft
 import { 
   GripVertical, 
   ChevronUp, 
@@ -16,8 +15,11 @@ import {
   Shrink,
   SlidersHorizontal,
   X,
-  ArrowRightLeft // ไอคอนสำหรับปุ่มสลับ
+  ArrowRightLeft
 } from 'lucide-react';
+
+// Bounding Box ของประเทศไทย (จาก index.js)
+const THAILAND_BBOX: Extent = [96.692891, 5.122222, 106.192853, 21.402443];
 
 // --- Layer Data ---
 const geeLayersData: Record<string, string> = {
@@ -51,7 +53,6 @@ type SummaryRecord = Record<string, any>;
 
 // --- Helper Function ---
 const createOlLayer = (id: string, label: string, url: string, visible: boolean, zIndex: number): LayerState => {
-  // ... (โค้ด createOlLayer เหมือนเดิม) ...
   let source: TileSource;
   if (label === "AIGreen WMS") {
     source = new TileWMS({
@@ -82,7 +83,7 @@ const formatNumber = (num: string | number | null | undefined) => {
 
 // --- React Component ---
 const AiSpatialPage: React.FC = () => {
-  // ... State เดิม ...
+  // States
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapTargetRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<Map | undefined>();
@@ -101,9 +102,8 @@ const AiSpatialPage: React.FC = () => {
   const [summaryData, setSummaryData] = useState<SummaryRecord[]>([]);
   const [summaryLevel, setSummaryLevel] = useState<'province' | 'amphoe' | 'tambon'>('province');
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
-
-  // 2. State ใหม่สำหรับสลับหน่วย (ไร่/ตัน)
   const [summaryMetric, setSummaryMetric] = useState<'arearai' | 'coabsorb'>('arearai');
+  const [searchQuery, setSearchQuery] = useState("");
 
   // --- Effects (Map Init) ---
   useEffect(() => {
@@ -111,7 +111,7 @@ const AiSpatialPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // ... (โค้ดโหลด Layer เหมือนเดิม) ...
+    // ... (โค้ดโหลด Layer) ...
     const layerOrder = [
       "AIGreen WMS", "Field Data 2025 (Styled)", "Field Data 2023 (Styled)", "ESA AGBD 2022",
       "S2 NDVI Monthly", "S2 Yearly Natural Color", "S1 Bands (Asset)", "SRTMGL1 RSEDTrans",
@@ -131,6 +131,7 @@ const AiSpatialPage: React.FC = () => {
       })
       .filter((layer): layer is LayerState => layer !== null);
     setLayers(initialLayers);
+    // ... (โค้ดสร้าง Map) ...
     const olMap = new Map({
       controls: defaultControls(), 
       view: new View({ center: fromLonLat([100.5, 13.7]), zoom: 6 }),
@@ -141,8 +142,12 @@ const AiSpatialPage: React.FC = () => {
     });
     if (mapTargetRef.current) { olMap.setTarget(mapTargetRef.current); }
     setMap(olMap);
+    
+    // Zoom ไปประเทศไทยตอนเริ่มต้น
+    zoomToExtent(THAILAND_BBOX);
+
     return () => { olMap.setTarget(undefined); };
-  }, []); 
+  }, []); // <-- dependency array ว่าง ถูกต้องแล้ว
 
   useEffect(() => {
     if (isIOS) return; 
@@ -153,7 +158,6 @@ const AiSpatialPage: React.FC = () => {
 
   // --- Logic (Dropdown) ---
   const fetchLocations = async (url: string, valueKey: string, textKey: string): Promise<LocationOption[]> => {
-    // ... (โค้ด fetchLocations เหมือนเดิม) ...
     try {
       const response = await fetch(url);
       const records = await response.json();
@@ -169,20 +173,26 @@ const AiSpatialPage: React.FC = () => {
       return [];
     }
   };
+  
+  // *** แก้ไขฟังก์ชัน zoomToExtent ให้ใช้ .getView() จาก state ***
   const zoomToExtent = (bbox: Extent) => {
-    if (!map) return;
+    // ใช้ map state แทนการส่ง map instance มา
+    if (!map) return; 
     const mapExtent = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
     map.getView().fit(mapExtent, { duration: 1000, padding: [50, 50, 50, 50] });
   };
+  
   useEffect(() => {
     fetchLocations("https://aigreen.dcce.go.th/rest/BBoxProvince", 'prov_code', 'prov_namt')
       .then(setProvinces);
   }, []);
+  
   useEffect(() => {
     if (selectedProv === "all") { setAmphoes([]); setSelectedAmphoe("all"); return; }
     fetchLocations(`https://aigreen.dcce.go.th/rest/BBoxAmphoe?prov_code=like.${selectedProv}`, 'amp_code', 'amp_namt')
       .then(setAmphoes);
   }, [selectedProv]);
+  
   useEffect(() => {
     if (selectedAmphoe === "all") { setTambons([]); setSelectedTambon("all"); return; }
     fetchLocations(`https://aigreen.dcce.go.th/rest/BBoxTambon?amp_code=like.${selectedAmphoe}`, 'tam_code', 'tam_namt')
@@ -221,26 +231,71 @@ const AiSpatialPage: React.FC = () => {
   }, [selectedProv, selectedAmphoe]);
 
   // --- Handlers ---
+  
+  // *** นี่คือ 3 Handlers ที่อัปเดตแล้ว ***
   const handleProvinceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedProv(value);
-    setSelectedAmphoe("all"); setSelectedTambon("all");
-    const option = provinces.find(p => p.value === value);
-    if (option) zoomToExtent(option.bbox);
+    setSelectedAmphoe("all"); 
+    setSelectedTambon("all");
+    setSearchQuery(""); // Reset การค้นหา
+
+    if (value === "all") {
+      // 1. ถ้าเลือก "ทุกจังหวัด" ให้ซูมไปประเทศไทย
+      zoomToExtent(THAILAND_BBOX);
+    } else {
+      // Logic เดิม: ซูมไปจังหวัดที่เลือก
+      const option = provinces.find(p => p.value === value);
+      if (option) zoomToExtent(option.bbox);
+    }
   };
+  
   const handleAmphoeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedAmphoe(value);
     setSelectedTambon("all");
-    const option = amphoes.find(a => a.value === value);
-    if (option) zoomToExtent(option.bbox);
+    setSearchQuery(""); // Reset การค้นหา
+
+    if (value === "all") {
+      // 2. ถ้าเลือก "ทุกอำเภอ" ให้ซูมไปจังหวัดแม่
+      const parentProvOption = provinces.find(p => p.value === selectedProv);
+      if (parentProvOption) {
+        zoomToExtent(parentProvOption.bbox);
+      } else {
+        // กรณีฉุกเฉิน (ไม่ควรเกิด)
+        zoomToExtent(THAILAND_BBOX);
+      }
+    } else {
+      // Logic เดิม: ซูมไปอำเภอที่เลือก
+      const option = amphoes.find(a => a.value === value);
+      if (option) zoomToExtent(option.bbox);
+    }
   };
+
   const handleTambonChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedTambon(value);
-    const option = tambons.find(t => t.value === value);
-    if (option) zoomToExtent(option.bbox);
+    setSearchQuery(""); // Reset การค้นหา
+
+    if (value === "all") {
+      // 3. ถ้าเลือก "ทุกตำบล" ให้ซูมไปอำเภอแม่
+      const parentAmphoeOption = amphoes.find(a => a.value === selectedAmphoe);
+      if (parentAmphoeOption) {
+        zoomToExtent(parentAmphoeOption.bbox);
+      } else {
+        // กรณีฉุกเฉิน (ถ้าไม่เจออำเภอ ให้ซูมไปจังหวัด)
+        const parentProvOption = provinces.find(p => p.value === selectedProv);
+        if (parentProvOption) {
+          zoomToExtent(parentProvOption.bbox);
+        }
+      }
+    } else {
+      // Logic เดิม: ซูมไปตำบลที่เลือก
+      const option = tambons.find(t => t.value === value);
+      if (option) zoomToExtent(option.bbox);
+    }
   };
+  
   // ... (Handlers อื่นๆ เหมือนเดิม) ...
   const toggleLayerVisibility = (id: string) => {
     setLayers(prevLayers =>
@@ -309,6 +364,18 @@ const AiSpatialPage: React.FC = () => {
   }, [summaryLevel]);
 
   const summaryCols = ['P', 'MG', 'MP', 'S', 'E', 'NCO', 'NCM', 'NOO', 'NOM', 'W', 'Total', 'Overall'];
+  
+  const filteredSummaryData = useMemo(() => {
+    if (!searchQuery) {
+      return summaryData; 
+    }
+    const lowerCaseQuery = searchQuery.toLowerCase();
+    return summaryData.filter(record => {
+      const code = String(record[codeKey] || '').toLowerCase();
+      const name = String(record[nameKey] || '').toLowerCase();
+      return code.includes(lowerCaseQuery) || name.includes(lowerCaseQuery);
+    });
+  }, [summaryData, searchQuery, codeKey, nameKey]);
   
   // --- Render JSX ---
   return (
@@ -406,27 +473,37 @@ const AiSpatialPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Dashboard (อัปเดต JSX) */}
+      {/* 4. Dashboard (อัปเดต JSX) */}
       <div className="p-4 bg-white rounded-xl shadow-sm th-font">
-        {/* Header ของ Dashboard (เพิ่มปุ่มสลับ) */}
-        <div className="flex justify-between items-center mb-4">
+        {/* Header ของ Dashboard (เพิ่มกล่องค้นหา) */}
+        <div className="flex flex-col md:flex-row justify-between items-center mb-4 space-y-2 md:space-y-0">
           <h2 className="text-xl font-bold text-slate-800">
             สรุปข้อมูลพื้นที่สีเขียว ( {summaryMetric === 'arearai' ? 'ไร่' : 'ตัน'} ) - ระดับ{levelName}
           </h2>
-          <button
-            onClick={() => setSummaryMetric(m => m === 'arearai' ? 'coabsorb' : 'arearai')}
-            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-          >
-            <ArrowRightLeft size={16} />
-            <span>
-              สลับเป็น {summaryMetric === 'arearai' ? 'กักเก็บคาร์บอน (ตัน)' : 'พื้นที่ (ไร่)'}
-            </span>
-          </button>
+          {/* กล่องเครื่องมือ (ค้นหา + สลับหน่วย) */}
+          <div className="flex items-center space-x-2">
+            <input
+              type="text"
+              placeholder="ค้นหา (รหัส, ชื่อ)..."
+              className="form-input px-3 py-2 text-sm border-slate-300 rounded-lg shadow-sm focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <button
+              onClick={() => setSummaryMetric(m => m === 'arearai' ? 'coabsorb' : 'arearai')}
+              className="flex-shrink-0 flex items-center space-x-2 px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            >
+              <ArrowRightLeft size={16} />
+              <span className="hidden md:inline">
+                สลับเป็น {summaryMetric === 'arearai' ? 'คาร์บอน (ตัน)' : 'พื้นที่ (ไร่)'}
+              </span>
+            </button>
+          </div>
         </div>
         
         {isSummaryLoading ? (
           <div className="text-center text-slate-500">กำลังโหลดข้อมูลสรุป...</div>
-        ) : summaryData.length > 0 ? (
+        ) : filteredSummaryData.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
@@ -439,11 +516,10 @@ const AiSpatialPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
-                {summaryData.map(record => (
+                {filteredSummaryData.map(record => (
                   <tr key={record[codeKey]} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-slate-700">{record[codeKey]}</td>
                     <td className="px-4 py-2 text-slate-900 font-medium">{record[nameKey]}</td>
-                    {/* 4. อัปเดตการดึงข้อมูลให้เป็น Dynamic */}
                     {summaryCols.map(col => (
                       <td key={col} className="px-4 py-2 text-right text-slate-700">
                         {formatNumber(record[`${summaryMetric}_${col}`])}
@@ -455,7 +531,9 @@ const AiSpatialPage: React.FC = () => {
             </table>
           </div>
         ) : (
-          <div className="text-center text-slate-500">ไม่พบข้อมูลสรุป</div>
+          <div className="text-center text-slate-500">
+            {searchQuery ? 'ไม่พบข้อมูลที่ตรงกับการค้นหา' : 'ไม่พบข้อมูลสรุป'}
+          </div>
         )}
       </div>
     </>
