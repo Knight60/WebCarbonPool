@@ -138,7 +138,12 @@ const AiSpatialPage: React.FC = () => {
   const [summaryMetric, setSummaryMetric] = useState<'arearai' | 'coabsorb'>('arearai');
   const [searchQuery, setSearchQuery] = useState("");
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
-  const [sortConfig, setSortConfig] = useState<{ key: string; order: 'asc' | 'desc' } | null>(null);
+
+  // ⭐️ FIX: ตั้งค่า Sort เริ่มต้น
+  const [sortConfig, setSortConfig] = useState<{ key: string; order: 'asc' | 'desc' } | null>({
+    key: 'arearai_Total', // ค่าเริ่มต้น: ไร่ (arearai) และคอลัมน์ Total
+    order: 'desc',        // ค่าเริ่มต้น: มากไปน้อย
+  });
 
   // Handler (Chart)
   const toggleSeries = (key: string) => {
@@ -282,9 +287,24 @@ const AiSpatialPage: React.FC = () => {
       });
   }, [selectedProv, selectedAmphoe]);
 
+  // ⭐️ FIX: Effect ใหม่ เพื่อซิงค์ SortKey กับ Metric
+  useEffect(() => {
+    setSortConfig(prevConfig => {
+      if (!prevConfig) return prevConfig; // ถ้าไม่ได้ Sort อยู่ ก็ไม่ต้องทำอะไร
+
+      // ถ้า key เดิมเป็น arearai, เปลี่ยนเป็น coabsorb (และกลับกัน)
+      let newKey = prevConfig.key;
+      if (summaryMetric === 'coabsorb' && prevConfig.key.startsWith('arearai_')) {
+        newKey = prevConfig.key.replace('arearai_', 'coabsorb_');
+      } else if (summaryMetric === 'arearai' && prevConfig.key.startsWith('coabsorb_')) {
+        newKey = prevConfig.key.replace('coabsorb_', 'arearai_');
+      }
+      
+      return { ...prevConfig, key: newKey };
+    });
+  }, [summaryMetric]); // ทำงานเมื่อ summaryMetric เปลี่ยน
+
   // --- Handlers ---
-  
-  // ⭐️⭐️⭐️ FIX: อัปเดต 3 Handlers ให้ "จำ" Sort Config ⭐️⭐️⭐️
   const handleProvinceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedProv(value);
