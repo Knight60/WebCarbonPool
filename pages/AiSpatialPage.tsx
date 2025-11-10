@@ -3,8 +3,10 @@ import 'ol/ol.css';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
-import { OSM, XYZ } from 'ol/source';
-import { fromLonLat } from 'ol/proj';
+// 1. อัปเดต imports
+import { OSM, XYZ, TileWMS, Tile as TileSource } from 'ol/source'; 
+import { fromLonLat, transformExtent } from 'ol/proj'; // Import เพิ่ม
+import { Extent } from 'ol/extent'; // Import เพิ่ม
 import { defaults as defaultControls } from 'ol/control';
 import { 
   GripVertical, 
@@ -16,6 +18,7 @@ import {
 
 // --- Layer Data ---
 const geeLayersData: Record<string, string> = {
+  "AIGreen WMS": "https://aigreen.dcce.go.th/geoserver/aigreen/wms",
   "S2 Yearly Natural Color": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/eae2603d5c456ef7602b5a7f4c8e4fc2-6422288101c351ff0de1aebecacb950b/tiles/{z}/{x}/{y}",
   "S2 NDVI Monthly": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/f63f56cc4995333132eaa4a87f7b7b7b-70328d02c5285b7e396252c02fa6f918/tiles/{z}/{x}/{y}",
   "S1 Bands (Asset)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/9294a067ea586f65345ed09bcd903f0e-ef1b82a160421bd21b93b189f7399bb0/tiles/{z}/{x}/{y}",
@@ -33,53 +36,73 @@ interface LayerState {
   label: string;
   url: string;
   visible: boolean;
-  olLayer: TileLayer<XYZ>;
+  olLayer: TileLayer<TileSource>;
+}
+
+// 2. Interface ใหม่สำหรับตัวเลือก Dropdown
+interface LocationOption {
+  value: string;
+  label: string;
+  bbox: Extent; // [xmin, ymin, xmax, ymax]
 }
 
 // --- Helper Function ---
-const createGeeLayer = (id: string, label: string, url: string, visible: boolean, zIndex: number): LayerState => {
-  const olLayer = new TileLayer({
-    source: new XYZ({ url: url, maxZoom: 20 }),
-    visible: visible,
-    zIndex: zIndex,
-  });
+const createOlLayer = (id: string, label: string, url: string, visible: boolean, zIndex: number): LayerState => {
+  let source: TileSource;
+  if (label === "AIGreen WMS") {
+    source = new TileWMS({
+      url: 'https://aigreen.dcce.go.th/geoserver/aigreen/wms',
+      params: {
+        'LAYERS': 'aigreen:AiGreenDLA,aigreen:Administration',
+        'TILED': true,
+        'TRANSPARENT': true,
+        'FORMAT': 'image/png'
+      },
+      serverType: 'geoserver',
+      transition: 0,
+    });
+  } else {
+    source = new XYZ({ url: url, maxZoom: 20 });
+  }
+  const olLayer = new TileLayer({ source: source, visible: visible, zIndex: zIndex });
   olLayer.set('id', id); 
   return { id, label, url, visible, olLayer };
 };
 
 // --- React Component ---
 const AiSpatialPage: React.FC = () => {
+  // ... State เดิม ...
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapTargetRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<Map | undefined>();
   const [layers, setLayers] = useState<LayerState[]>([]);
   const draggedItemIndex = useRef<number | null>(null);
-  const [isLayerListVisible, setIsLayerListVisible] = useState(true);
+  const [isLayerListVisible, setIsLayerListVisible] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
 
-  // --- Effects ---
+  // --- 3. State ใหม่สำหรับ Dropdown ---
+  const [provinces, setProvinces] = useState<LocationOption[]>([]);
+  const [amphoes, setAmphoes] = useState<LocationOption[]>([]);
+  const [tambons, setTambons] = useState<LocationOption[]>([]);
+  
+  const [selectedProv, setSelectedProv] = useState("all");
+  const [selectedAmphoe, setSelectedAmphoe] = useState("all");
+  const [selectedTambon, setSelectedTambon] = useState("all");
+
+  // --- Effects (Map Init) ---
   useEffect(() => {
     setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
   }, []);
 
   useEffect(() => {
     const layerOrder = [
-      "Field Data 2025 (Styled)",
-      "Field Data 2023 (Styled)",
-      "ESA AGBD 2022",
-      "S2 NDVI Monthly",
-      "S2 Yearly Natural Color",
-      "S1 Bands (Asset)",
-      "SRTMGL1 RSEDTrans",
-      "Zero Areas Mask (Simplified)",
-      "GMap Hybrid",
+      "AIGreen WMS", "Field Data 2025 (Styled)", "Field Data 2023 (Styled)", "ESA AGBD 2022",
+      "S2 NDVI Monthly", "S2 Yearly Natural Color", "S1 Bands (Asset)", "SRTMGL1 RSEDTrans",
+      "Zero Areas Mask (Simplified)", "GMap Hybrid",
     ];
     const defaultVisibleLayers = new Set([
-      "Field Data 2025 (Styled)",
-      "ESA AGBD 2022",
-      //"S2 Yearly Natural Color",
-      "GMap Hybrid",
+      "AIGreen WMS", "Field Data 2025 (Styled)", "ESA AGBD 2022", "GMap Hybrid",
     ]);
 
     const initialLayers = layerOrder
@@ -89,7 +112,7 @@ const AiSpatialPage: React.FC = () => {
         const id = label.replace(/\s+/g, '-').toLowerCase();
         const isVisible = defaultVisibleLayers.has(label);
         const zIndex = layerOrder.length - index; 
-        return createGeeLayer(id, label, url, isVisible, zIndex);
+        return createOlLayer(id, label, url, isVisible, zIndex);
       })
       .filter((layer): layer is LayerState => layer !== null);
 
@@ -107,29 +130,111 @@ const AiSpatialPage: React.FC = () => {
       ],
     });
 
-    if (mapTargetRef.current) {
-      olMap.setTarget(mapTargetRef.current);
-    }
+    if (mapTargetRef.current) { olMap.setTarget(mapTargetRef.current); }
     setMap(olMap);
 
-    return () => {
-      olMap.setTarget(undefined);
-    };
+    return () => { olMap.setTarget(undefined); };
   }, []); 
 
   useEffect(() => {
     if (isIOS) return; 
-
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
+    const handleFullscreenChange = () => { setIsFullscreen(!!document.fullscreenElement); };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
+    return () => { document.removeEventListener('fullscreenchange', handleFullscreenChange); };
   }, [isIOS]);
 
-  // --- Handlers ---
+
+  // --- 4. Logic ใหม่ (ดัดแปลงจาก index.js) ---
+
+  // Helper: ฟังก์ชันสำหรับ fetch ข้อมูล Dropdown
+  const fetchLocations = async (url: string, valueKey: string, textKey: string): Promise<LocationOption[]> => {
+    try {
+      const response = await fetch(url);
+      const records = await response.json();
+      return records.map((record: any): LocationOption => {
+        // คำนวณ BBox (ตาม logic ใน index.js)
+        const xmin = Math.min(...record.bbox.coordinates[0].map((xy: number[]) => xy[0]));
+        const ymin = Math.min(...record.bbox.coordinates[0].map((xy: number[]) => xy[1]));
+        const xmax = Math.max(...record.bbox.coordinates[0].map((xy: number[]) => xy[0]));
+        const ymax = Math.max(...record.bbox.coordinates[0].map((xy: number[]) => xy[1]));
+        
+        return {
+          value: record[valueKey],
+          label: record[textKey],
+          bbox: [xmin, ymin, xmax, ymax]
+        };
+      });
+    } catch (error) {
+      console.error("Failed to fetch locations:", error);
+      return [];
+    }
+  };
+  
+  // Helper: ฟังก์ชัน Zoom แผนที่ (ตาม logic ใน changeExtent)
+  const zoomToExtent = (bbox: Extent) => {
+    if (!map) return;
+    // แปลง BBox จาก EPSG:4326 (ที่ API ให้มา) เป็น EPSG:3857 (ที่ Map ใช้)
+    const mapExtent = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
+    map.getView().fit(mapExtent, { duration: 1000, padding: [50, 50, 50, 50] });
+  };
+  
+  // Effect: Fetch จังหวัด
+  useEffect(() => {
+    fetchLocations("https://aigreen.dcce.go.th/rest/BBoxProvince", 'prov_code', 'prov_namt')
+      .then(setProvinces);
+  }, []); // ทำงานครั้งเดียว
+
+  // Effect: Fetch อำเภอ (เมื่อจังหวัดเปลี่ยน)
+  useEffect(() => {
+    if (selectedProv === "all") {
+      setAmphoes([]);
+      setSelectedAmphoe("all");
+      return;
+    }
+    fetchLocations(`https://aigreen.dcce.go.th/rest/BBoxAmphoe?prov_code=like.${selectedProv}`, 'amp_code', 'amp_namt')
+      .then(setAmphoes);
+  }, [selectedProv]); // ทำงานเมื่อ selectedProv เปลี่ยน
+
+  // Effect: Fetch ตำบล (เมื่ออำเภอเปลี่ยน)
+  useEffect(() => {
+    if (selectedAmphoe === "all") {
+      setTambons([]);
+      setSelectedTambon("all");
+      return;
+    }
+    fetchLocations(`https://aigreen.dcce.go.th/rest/BBoxTambon?amp_code=like.${selectedAmphoe}`, 'tam_code', 'tam_namt')
+      .then(setTambons);
+  }, [selectedAmphoe]); // ทำงานเมื่อ selectedAmphoe เปลี่ยน
+
+  // Handlers: สำหรับ Dropdown (ตาม logic ใน changeProvince, changeAmphoe, changeTambon)
+  const handleProvinceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setSelectedProv(value);
+    setSelectedAmphoe("all"); // Reset
+    setSelectedTambon("all"); // Reset
+    
+    const option = provinces.find(p => p.value === value);
+    if (option) zoomToExtent(option.bbox);
+  };
+  
+  const handleAmphoeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setSelectedAmphoe(value);
+    setSelectedTambon("all"); // Reset
+
+    const option = amphoes.find(a => a.value === value);
+    if (option) zoomToExtent(option.bbox);
+  };
+
+  const handleTambonChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setSelectedTambon(value);
+    
+    const option = tambons.find(t => t.value === value);
+    if (option) zoomToExtent(option.bbox);
+  };
+
+  // --- Handlers เดิม ---
   const toggleLayerVisibility = (id: string) => {
     setLayers(prevLayers =>
       prevLayers.map(layer => {
@@ -204,9 +309,8 @@ const AiSpatialPage: React.FC = () => {
         {/* Map Target Div */}
         <div ref={mapTargetRef} className="w-full h-full" />
 
-        {/* 3. Layer Control Overlay (❗️อัปเดตตำแหน่ง) */}
+        {/* 3. Layer Control Overlay (ตำแหน่งเดิม) */}
         <div className="absolute top-2 left-14 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
-          {/* ^^^ เปลี่ยนเป็น top-2 left-14 (0.5rem top, 3.5rem left) ^^^ */}
           
           <div 
             className="flex justify-between items-center cursor-pointer select-none"
@@ -246,17 +350,65 @@ const AiSpatialPage: React.FC = () => {
           )}
         </div>
 
-        {/* 4. ปุ่ม Fullscreen (❗️อัปเดตตำแหน่ง) */}
+        {/* 4. ปุ่ม Fullscreen (ตำแหน่งเดิม) */}
         <button
           onClick={toggleCustomFullscreen}
           className="absolute top-2 left-2 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
           title={isFullscreen ? "ออกจากโหมดเต็มจอ" : "แสดงผลเต็มจอ"}
         >
-          {/* ^^^ เปลี่ยนเป็น top-2 left-2 (0.5rem top, 0.5rem left) ^^^ */}
-          
           {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
         </button>
         
+        {/* 5. Dropdown ควบคุมพื้นที่ (ใหม่) */}
+        <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30 th-font">
+          <div className="space-y-3">
+            {/* จังหวัด */}
+            <div className="flex items-center">
+              <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
+              <select 
+                className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50"
+                value={selectedProv}
+                onChange={handleProvinceChange}
+              >
+                <option value="all">ทุกจังหวัด</option>
+                {provinces.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            {/* อำเภอ */}
+            <div className="flex items-center">
+              <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
+              <select 
+                className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50"
+                value={selectedAmphoe}
+                onChange={handleAmphoeChange}
+                disabled={selectedProv === 'all' || amphoes.length === 0}
+              >
+                <option value="all">ทุกอำเภอ</option>
+                 {amphoes.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            {/* ตำบล */}
+            <div className="flex items-center">
+              <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
+              <select 
+                className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50"
+                value={selectedTambon}
+                onChange={handleTambonChange}
+                disabled={selectedAmphoe === 'all' || tambons.length === 0}
+              >
+                <option value="all">ทุกตำบล</option>
+                 {tambons.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );
