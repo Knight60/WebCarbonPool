@@ -541,8 +541,8 @@ const HomePage: React.FC = () => {
 
       {/* Stats Section */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <StatCard value="46.9M" label="ตันคาร์บอน" description="ปริมาณคาร์บอนสะสม (Carbon Stock) ปี 2566" />
-        <StatCard value="4.6M" label="ตัน CO₂/ปี" description="การดูดซับคาร์บอนสุทธิ (Carbon Sink) ปี 2566" />
+        <StatCard value="46.9M" label="ตันคาร์บอน" description="ปริมาณคาร์บอนสะสม (Carbon Stock) ปี 2568" />
+        <StatCard value="4.6M" label="ตัน CO₂/ปี" description="การดูดซับคาร์บอนสุทธิ (Carbon Sink) ปี 2568" />
         <StatCard value="210" label="แปลง" description="แปลงสำรวจถาวรทั่วประเทศ" />
         <StatCard value="395+" label="ชนิดพันธุ์" description="ฐานข้อมูลพรรณไม้ในเมือง" />
       </section>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, DragEvent } from 'react';
+import React, { useState, useEffect, useRef, DragEvent, useMemo } from 'react';
 import 'ol/ol.css';
 import Map from 'ol/Map';
 import View from 'ol/View';
@@ -7,15 +7,16 @@ import { OSM, XYZ, TileWMS, Tile as TileSource } from 'ol/source';
 import { fromLonLat, transformExtent } from 'ol/proj';
 import { Extent } from 'ol/extent';
 import { defaults as defaultControls } from 'ol/control';
-// 1. Import Icon เพิ่ม: SlidersHorizontal และ X
+// 1. Import Icon เพิ่ม: ArrowRightLeft
 import { 
   GripVertical, 
   ChevronUp, 
   ChevronDown, 
   Expand, 
   Shrink,
-  SlidersHorizontal, // ไอคอนสำหรับปุ่มตั้งค่า
-  X                  // ไอคอนสำหรับปุ่มปิด
+  SlidersHorizontal,
+  X,
+  ArrowRightLeft // ไอคอนสำหรับปุ่มสลับ
 } from 'lucide-react';
 
 // --- Layer Data ---
@@ -33,25 +34,24 @@ const geeLayersData: Record<string, string> = {
 };
 
 // --- Interfaces ---
-// 2. เพิ่ม opacity ใน LayerState
 interface LayerState {
   id: string;
   label: string;
   url: string;
   visible: boolean;
   olLayer: TileLayer<TileSource>;
-  opacity: number; // เพิ่ม state ความโปร่งใส
+  opacity: number;
 }
-
 interface LocationOption {
   value: string;
   label: string;
   bbox: Extent;
 }
+type SummaryRecord = Record<string, any>;
 
 // --- Helper Function ---
-// 3. อัปเดต createOlLayer ให้รองรับ opacity
 const createOlLayer = (id: string, label: string, url: string, visible: boolean, zIndex: number): LayerState => {
+  // ... (โค้ด createOlLayer เหมือนเดิม) ...
   let source: TileSource;
   if (label === "AIGreen WMS") {
     source = new TileWMS({
@@ -67,10 +67,17 @@ const createOlLayer = (id: string, label: string, url: string, visible: boolean,
     source: source, 
     visible: visible, 
     zIndex: zIndex,
-    opacity: 1 // ค่าเริ่มต้น
+    opacity: 1 
   });
   olLayer.set('id', id); 
-  return { id, label, url, visible, olLayer, opacity: 1 }; // ส่ง opacity 1 กลับไป
+  return { id, label, url, visible, olLayer, opacity: 1 };
+};
+
+const formatNumber = (num: string | number | null | undefined) => {
+  if (num === null || num === undefined) return '-';
+  const val = parseFloat(String(num).replace(/,/g, ''));
+  if (isNaN(val)) return '-';
+  return val.toLocaleString("en-US", { maximumFractionDigits: 2 });
 };
 
 // --- React Component ---
@@ -90,9 +97,13 @@ const AiSpatialPage: React.FC = () => {
   const [selectedProv, setSelectedProv] = useState("all");
   const [selectedAmphoe, setSelectedAmphoe] = useState("all");
   const [selectedTambon, setSelectedTambon] = useState("all");
-
-  // 4. State ใหม่สำหรับกล่อง Opacity
   const [opacityEditor, setOpacityEditor] = useState<{ id: string; label: string } | null>(null);
+  const [summaryData, setSummaryData] = useState<SummaryRecord[]>([]);
+  const [summaryLevel, setSummaryLevel] = useState<'province' | 'amphoe' | 'tambon'>('province');
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+
+  // 2. State ใหม่สำหรับสลับหน่วย (ไร่/ตัน)
+  const [summaryMetric, setSummaryMetric] = useState<'arearai' | 'coabsorb'>('arearai');
 
   // --- Effects (Map Init) ---
   useEffect(() => {
@@ -109,7 +120,6 @@ const AiSpatialPage: React.FC = () => {
     const defaultVisibleLayers = new Set([
       "AIGreen WMS", "Field Data 2025 (Styled)", "ESA AGBD 2022", "GMap Hybrid",
     ]);
-
     const initialLayers = layerOrder
       .map((label, index) => {
         const url = geeLayersData[label];
@@ -121,7 +131,6 @@ const AiSpatialPage: React.FC = () => {
       })
       .filter((layer): layer is LayerState => layer !== null);
     setLayers(initialLayers);
-    // ... (โค้ดสร้าง Map เหมือนเดิม) ...
     const olMap = new Map({
       controls: defaultControls(), 
       view: new View({ center: fromLonLat([100.5, 13.7]), zoom: 6 }),
@@ -144,6 +153,7 @@ const AiSpatialPage: React.FC = () => {
 
   // --- Logic (Dropdown) ---
   const fetchLocations = async (url: string, valueKey: string, textKey: string): Promise<LocationOption[]> => {
+    // ... (โค้ด fetchLocations เหมือนเดิม) ...
     try {
       const response = await fetch(url);
       const records = await response.json();
@@ -161,7 +171,7 @@ const AiSpatialPage: React.FC = () => {
   };
   const zoomToExtent = (bbox: Extent) => {
     if (!map) return;
-    const mapExtent = transformExtent(bbox, 'EPSG:4L326', 'EPSG:3857');
+    const mapExtent = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
     map.getView().fit(mapExtent, { duration: 1000, padding: [50, 50, 50, 50] });
   };
   useEffect(() => {
@@ -178,6 +188,37 @@ const AiSpatialPage: React.FC = () => {
     fetchLocations(`https://aigreen.dcce.go.th/rest/BBoxTambon?amp_code=like.${selectedAmphoe}`, 'tam_code', 'tam_namt')
       .then(setTambons);
   }, [selectedAmphoe]);
+
+  // Effect (Fetch Dashboard Data)
+  useEffect(() => {
+    let url = '';
+    let level: 'province' | 'amphoe' | 'tambon' = 'province';
+    if (selectedAmphoe !== 'all') {
+      url = `https://aigreen.dcce.go.th/rest/AiGreenCluster_PivotTAM?order=tam_code&amp_code=like.${selectedAmphoe}`;
+      level = 'tambon';
+    } else if (selectedProv !== 'all') {
+      url = `https://aigreen.dcce.go.th/rest/AiGreenCluster_PivotAMP?order=amp_code&prov_code=like.${selectedProv}`;
+      level = 'amphoe';
+    } else {
+      url = 'https://aigreen.dcce.go.th/rest/AiGreenCluster_PivotPRV?order=prov_code';
+      level = 'province';
+    }
+    setSummaryLevel(level);
+    setIsSummaryLoading(true);
+    fetch(url)
+      .then(response => response.json())
+      .then((data: SummaryRecord[]) => {
+        const codeKey = level === 'province' ? 'prov_code' : (level === 'amphoe' ? 'amp_code' : 'tam_code');
+        setSummaryData(data.filter(record => record[codeKey] && record[codeKey] !== ' '));
+      })
+      .catch(error => {
+        console.error("Failed to fetch summary data:", error);
+        setSummaryData([]);
+      })
+      .finally(() => {
+        setIsSummaryLoading(false);
+      });
+  }, [selectedProv, selectedAmphoe]);
 
   // --- Handlers ---
   const handleProvinceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -200,6 +241,7 @@ const AiSpatialPage: React.FC = () => {
     const option = tambons.find(t => t.value === value);
     if (option) zoomToExtent(option.bbox);
   };
+  // ... (Handlers อื่นๆ เหมือนเดิม) ...
   const toggleLayerVisibility = (id: string) => {
     setLayers(prevLayers =>
       prevLayers.map(layer => {
@@ -243,181 +285,180 @@ const AiSpatialPage: React.FC = () => {
       }
     }
   };
-
-  // 5. Handler ใหม่สำหรับ Opacity
   const handleOpacityChange = (id: string, newOpacity: number) => {
     setLayers(prevLayers =>
       prevLayers.map(layer => {
         if (layer.id === id) {
-          layer.olLayer.setOpacity(newOpacity); // อัปเดต OpenLayers
-          return { ...layer, opacity: newOpacity }; // อัปเดต React State
+          layer.olLayer.setOpacity(newOpacity);
+          return { ...layer, opacity: newOpacity };
         }
         return layer;
       })
     );
   };
 
+  // Helper (Dashboard)
+  const { codeKey, nameKey, levelName } = useMemo(() => {
+    if (summaryLevel === 'tambon') {
+      return { codeKey: 'tam_code', nameKey: 'tam_namt', levelName: 'ตำบล' };
+    }
+    if (summaryLevel === 'amphoe') {
+      return { codeKey: 'amp_code', nameKey: 'amp_namt', levelName: 'อำเภอ' };
+    }
+    return { codeKey: 'prov_code', nameKey: 'prov_namt', levelName: 'จังหวัด' };
+  }, [summaryLevel]);
+
+  const summaryCols = ['P', 'MG', 'MP', 'S', 'E', 'NCO', 'NCM', 'NOO', 'NOM', 'W', 'Total', 'Overall'];
+  
   // --- Render JSX ---
   return (
-    <div className="space-y-6 th-font">
-      {/* 1. Page Header */}
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-slate-800">AI Spatial Analysis</h1>
-        <p className="mt-2 text-slate-600">
-          แผนที่แสดงผลการวิเคราะห์เชิงพื้นที่และการประเมินการสะสมคาร์บอน
-        </p>
-      </div>
+    <> 
+      <div className="space-y-6 th-font">
+        {/* 1. Page Header */}
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-slate-800">AI Spatial Analysis</h1>
+          <p className="mt-2 text-slate-600">
+            แผนที่แสดงผลการวิเคราะห์เชิงพื้นที่และการประเมินการสะสมคาร์บอน
+          </p>
+        </div>
 
-      {/* 2. Map Container */}
-      <div 
-        ref={mapContainerRef} 
-        className={
-          isFullscreen && isIOS
-            ? "fixed inset-0 z-50 w-screen h-screen bg-slate-200" // Fake Fullscreen
-            : "bg-slate-200 rounded-xl shadow-sm overflow-hidden relative" // Normal
-        }
-        style={
-          isFullscreen && isIOS
-            ? {}
-            : { height: 'calc(100vh - 20rem)' }
-        }
-      >
-        {/* Map Target Div */}
-        <div ref={mapTargetRef} className="w-full h-full" />
-
-        {/* 3. Layer Control Overlay (อัปเดต JSX ภายใน) */}
-        <div className="absolute top-2 left-14 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
-          <div 
-            className="flex justify-between items-center cursor-pointer select-none"
-            onClick={() => setIsLayerListVisible(prev => !prev)}
-          >
-            <h2 className="text-lg font-semibold text-slate-800">ชั้นข้อมูล (Layers)</h2>
-            {isLayerListVisible ? <ChevronUp size={20} className="text-slate-600" /> : <ChevronDown size={20} className="text-slate-600" />}
-          </div>
-          {isLayerListVisible && (
-            <div className="mt-3">
-              <p className="text-xs text-slate-500 mb-3"> (ลากเพื่อสลับลำดับ)</p>
-              <div className="space-y-2">
-                
-                {/* 6. อัปเดต JSX ของรายการ Layer */}
-                {layers.map((layer, index) => (
-                  <div
-                    key={layer.id}
-                    draggable={true}
-                    onDragStart={() => handleDragStart(index)}
-                    onDragOver={handleDragOver}
-                    onDrop={() => handleDrop(index)}
-                    className="flex items-center p-2 rounded bg-white/50 hover:bg-slate-100 cursor-grab active:cursor-grabbing"
-                  >
-                    {/* Handle */}
-                    <span className="text-slate-400 mr-2" title="ลากเพื่อสลับลำดับ"><GripVertical size={18} /></span>
-                    
-                    {/* Checkbox */}
-                    <input
-                      type="checkbox"
-                      checked={layer.visible}
-                      onChange={() => toggleLayerVisibility(layer.id)}
-                      className="h-5 w-5 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 mr-3"
-                    />
-                    
-                    {/* Label (เพิ่ม flex-grow) */}
-                    <span className="text-sm text-slate-700 select-none flex-grow">{layer.label}</span>
-                    
-                    {/* 7. ปุ่ม Opacity ใหม่ */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation(); // ป้องกันการลาก
-                        setOpacityEditor({ id: layer.id, label: layer.label });
-                      }}
-                      className="ml-2 text-slate-500 hover:text-slate-800 px-1"
-                      title="ปรับความโปร่งใส"
-                    >
-                      <SlidersHorizontal size={16} />
-                    </button>
-                  </div>
-                ))}
+        {/* 2. Map Container */}
+        <div 
+          ref={mapContainerRef} 
+          className={
+            isFullscreen && isIOS
+              ? "fixed inset-0 z-50 w-screen h-screen bg-slate-200"
+              : "bg-slate-200 rounded-xl shadow-sm overflow-hidden relative"
+          }
+          style={
+            isFullscreen && isIOS
+              ? {}
+              : { height: 'calc(100vh - 20rem)' }
+          }
+        >
+          {/* ... (Controls ทั้งหมดบนแผนที่ เหมือนเดิม) ... */}
+          <div ref={mapTargetRef} className="w-full h-full" />
+          <div className="absolute top-2 left-14 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
+            <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => setIsLayerListVisible(prev => !prev)}>
+              <h2 className="text-lg font-semibold text-slate-800">ชั้นข้อมูล (Layers)</h2>
+              {isLayerListVisible ? <ChevronUp size={20} className="text-slate-600" /> : <ChevronDown size={20} className="text-slate-600" />}
+            </div>
+            {isLayerListVisible && (
+              <div className="mt-3">
+                <p className="text-xs text-slate-500 mb-3"> (ลากเพื่อสลับลำดับ)</p>
+                <div className="space-y-2">
+                  {layers.map((layer, index) => (
+                    <div key={layer.id} draggable={true} onDragStart={() => handleDragStart(index)} onDragOver={handleDragOver} onDrop={() => handleDrop(index)} className="flex items-center p-2 rounded bg-white/50 hover:bg-slate-100 cursor-grab active:cursor-grabbing">
+                      <span className="text-slate-400 mr-2" title="ลากเพื่อสลับลำดับ"><GripVertical size={18} /></span>
+                      <input type="checkbox" checked={layer.visible} onChange={() => toggleLayerVisibility(layer.id)} className="h-5 w-5 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 mr-3"/>
+                      <span className="text-sm text-slate-700 select-none flex-grow">{layer.label}</span>
+                      <button onClick={(e) => { e.stopPropagation(); setOpacityEditor({ id: layer.id, label: layer.label }); }} className="ml-2 text-slate-500 hover:text-slate-800 px-1" title="ปรับความโปร่งใส">
+                        <SlidersHorizontal size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
+            )}
+          </div>
+          <button onClick={toggleCustomFullscreen} className="absolute top-2 left-2 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400" title={isFullscreen ? "ออกจากโหมดเต็มจอ" : "แสดงผลเต็มจอ"}>
+            {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
+          </button>
+          <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30 th-font">
+            <div className="space-y-3">
+              <div className="flex items-center">
+                <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
+                <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedProv} onChange={handleProvinceChange}>
+                  <option value="all">ทุกจังหวัด</option>
+                  {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                </select>
+              </div>
+              <div className="flex items-center">
+                <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
+                <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedAmphoe} onChange={handleAmphoeChange} disabled={selectedProv === 'all' || amphoes.length === 0}>
+                  <option value="all">ทุกอำเภอ</option>
+                  {amphoes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                </select>
+              </div>
+              <div className="flex items-center">
+                <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
+                <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedTambon} onChange={handleTambonChange} disabled={selectedAmphoe === 'all' || tambons.length === 0}>
+                  <option value="all">ทุกตำบล</option>
+                  {tambons.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                </select>
+              </div>
+            </div>
+          </div>
+          {opacityEditor && (
+            <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-lg z-40 w-64">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold text-slate-700 truncate pr-2" title={opacityEditor.label}>{opacityEditor.label}</h3>
+                <button onClick={() => setOpacityEditor(null)} className="text-slate-500 hover:text-slate-800"><X size={18} /></button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-slate-600">0%</span>
+                <input type="range" min="0" max="1" step="0.05" value={layers.find(l => l.id === opacityEditor.id)?.opacity || 1} onChange={(e) => handleOpacityChange(opacityEditor.id, parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer range-sm"/>
+                <span className="text-sm text-slate-600">100%</span>
+              </div>
+              <div className="text-center text-sm text-slate-700 mt-2">{Math.round((layers.find(l => l.id === opacityEditor.id)?.opacity || 1) * 100)}%</div>
             </div>
           )}
         </div>
-
-        {/* 4. ปุ่ม Fullscreen (ตำแหน่งเดิม) */}
-        <button
-          onClick={toggleCustomFullscreen}
-          className="absolute top-2 left-2 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
-          title={isFullscreen ? "ออกจากโMODEเต็มจอ" : "แสดงผลเต็มจอ"}
-        >
-          {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
-        </button>
-        
-        {/* 5. Dropdown ควบคุมพื้นที่ (ตำแหน่งเดิม) */}
-        <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30 th-font">
-          <div className="space-y-3">
-            {/* ... (Dropdown จังหวัด/อำเภอ/ตำบล เหมือนเดิม) ... */}
-            <div className="flex items-center">
-              <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
-              <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedProv} onChange={handleProvinceChange}>
-                <option value="all">ทุกจังหวัด</option>
-                {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-              </select>
-            </div>
-            <div className="flex items-center">
-              <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
-              <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedAmphoe} onChange={handleAmphoeChange} disabled={selectedProv === 'all' || amphoes.length === 0}>
-                <option value="all">ทุกอำเภอ</option>
-                 {amphoes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-              </select>
-            </div>
-            <div className="flex items-center">
-              <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
-              <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedTambon} onChange={handleTambonChange} disabled={selectedAmphoe === 'all' || tambons.length === 0}>
-                <option value="all">ทุกตำบล</option>
-                 {tambons.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* 8. กล่องเครื่องมือ "Modal" สำหรับ Opacity (ใหม่) */}
-        {opacityEditor && (
-          <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-lg z-40 w-64">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-sm font-semibold text-slate-700 truncate pr-2" title={opacityEditor.label}>
-                {opacityEditor.label}
-              </h3>
-              <button 
-                onClick={() => setOpacityEditor(null)}
-                className="text-slate-500 hover:text-slate-800"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            {/* Slider */}
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-slate-600">0%</span>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                // หาค่า opacity ปัจจุบัน
-                value={layers.find(l => l.id === opacityEditor.id)?.opacity || 1}
-                // เมื่อเปลี่ยน ให้เรียก handleOpacityChange
-                onChange={(e) => handleOpacityChange(opacityEditor.id, parseFloat(e.target.value))}
-                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer range-sm"
-              />
-              <span className="text-sm text-slate-600">100%</span>
-            </div>
-            {/* เปอร์เซ็นต์ */}
-            <div className="text-center text-sm text-slate-700 mt-2">
-              {Math.round((layers.find(l => l.id === opacityEditor.id)?.opacity || 1) * 100)}%
-            </div>
-          </div>
-        )}
-
       </div>
-    </div>
+
+      {/* 3. Dashboard (อัปเดต JSX) */}
+      <div className="p-4 bg-white rounded-xl shadow-sm th-font">
+        {/* Header ของ Dashboard (เพิ่มปุ่มสลับ) */}
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-slate-800">
+            สรุปข้อมูลพื้นที่สีเขียว ( {summaryMetric === 'arearai' ? 'ไร่' : 'ตัน'} ) - ระดับ{levelName}
+          </h2>
+          <button
+            onClick={() => setSummaryMetric(m => m === 'arearai' ? 'coabsorb' : 'arearai')}
+            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          >
+            <ArrowRightLeft size={16} />
+            <span>
+              สลับเป็น {summaryMetric === 'arearai' ? 'กักเก็บคาร์บอน (ตัน)' : 'พื้นที่ (ไร่)'}
+            </span>
+          </button>
+        </div>
+        
+        {isSummaryLoading ? (
+          <div className="text-center text-slate-500">กำลังโหลดข้อมูลสรุป...</div>
+        ) : summaryData.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-600">รหัส</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-600">{levelName}</th>
+                  {summaryCols.map(col => (
+                    <th key={col} className="px-4 py-2 text-right font-semibold text-slate-600">{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {summaryData.map(record => (
+                  <tr key={record[codeKey]} className="hover:bg-slate-50">
+                    <td className="px-4 py-2 text-slate-700">{record[codeKey]}</td>
+                    <td className="px-4 py-2 text-slate-900 font-medium">{record[nameKey]}</td>
+                    {/* 4. อัปเดตการดึงข้อมูลให้เป็น Dynamic */}
+                    {summaryCols.map(col => (
+                      <td key={col} className="px-4 py-2 text-right text-slate-700">
+                        {formatNumber(record[`${summaryMetric}_${col}`])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center text-slate-500">ไม่พบข้อมูลสรุป</div>
+        )}
+      </div>
+    </>
   );
 };
 
