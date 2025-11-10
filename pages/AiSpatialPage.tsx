@@ -158,26 +158,14 @@ const AiSpatialPage: React.FC = () => {
   // Fullscreen Handler
   const toggleCustomFullscreen = () => {
     if (!mapContainerRef.current) return;
-
     if (isIOS) {
-      // --- 1. Logic สำหรับ iOS ("Fake" Fullscreen) ---
-      setIsFullscreen(prev => !prev); // อัปเดต State
-      
-      // เรียก updateSize() หลังจาก re-render/transition
-      setTimeout(() => {
-        map?.updateSize(); 
-      }, 150); // 150ms delay
-
+      setIsFullscreen(prev => !prev);
+      setTimeout(() => { map?.updateSize(); }, 150);
     } else {
-      // --- 2. Logic สำหรับ Desktop ("Real" Fullscreen) ---
       if (!document.fullscreenElement) {
-        mapContainerRef.current.requestFullscreen().catch(err => {
-          console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-        });
+        mapContainerRef.current.requestFullscreen().catch(err => console.error(err));
       } else {
-        if (document.exitFullscreen) {
-          document.exitFullscreen();
-        }
+        if (document.exitFullscreen) document.exitFullscreen();
       }
     }
   };
@@ -210,9 +198,9 @@ const AiSpatialPage: React.FC = () => {
         {/* Map Target Div */}
         <div ref={mapTargetRef} className="w-full h-full" />
 
-        {/* 3. Layer Control Overlay (อัปเดต z-index) */}
-        <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
-          {/* ^^^ เปลี่ยนจาก z-10 เป็น z-30 ^^^ */}
+        {/* 3. Layer Control Overlay (❗️อัปเดตตำแหน่ง) */}
+        <div className="absolute top-16 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
+          {/* ^^^ เปลี่ยนจาก top-24 เป็น top-16 (4rem) ^^^ */}
           
           <div 
             className="flex justify-between items-center cursor-pointer select-none"
@@ -252,14 +240,12 @@ const AiSpatialPage: React.FC = () => {
           )}
         </div>
 
-        {/* 4. ปุ่ม Fullscreen (อัปเดต z-index) */}
+        {/* 4. ปุ่ม Fullscreen (ตำแหน่งเดิม) */}
         <button
           onClick={toggleCustomFullscreen}
-          className="absolute bottom-4 right-4 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          className="absolute top-2 left-14 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
           title={isFullscreen ? "ออกจากโหมดเต็มจอ" : "แสดงผลเต็มจอ"}
         >
-          {/* ^^^ เปลี่ยนจาก z-10 เป็น z-30 ^^^ */}
-          
           {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
         </button>
         
