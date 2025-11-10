@@ -1,15 +1,11 @@
 import React, { useState, useEffect, useRef, DragEvent } from 'react';
-
-// 1. Import OpenLayers
-import 'ol/ol.css'; // Import OpenLayers CSS
+import 'ol/ol.css';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
 import { OSM, XYZ } from 'ol/source';
 import { fromLonLat } from 'ol/proj';
-// 2. อัปเดต import: ลบ FullScreen, เพิ่ม defaultControls
 import { defaults as defaultControls } from 'ol/control';
-// 3. อัปเดต import: เพิ่ม icon ที่ต้องใช้
 import { 
   GripVertical, 
   ChevronUp, 
@@ -20,6 +16,7 @@ import {
 
 // --- Layer Data ---
 const geeLayersData: Record<string, string> = {
+  // ... (ข้อมูล Layer ของคุณเหมือนเดิม) ...
   "S2 Yearly Natural Color": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/eae2603d5c456ef7602b5a7f4c8e4fc2-6422288101c351ff0de1aebecacb950b/tiles/{z}/{x}/{y}",
   "S2 NDVI Monthly": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/f63f56cc4995333132eaa4a87f7b7b7b-70328d02c5285b7e396252c02fa6f918/tiles/{z}/{x}/{y}",
   "S1 Bands (Asset)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/9294a067ea586f65345ed09bcd903f0e-ef1b82a160421bd21b93b189f7399bb0/tiles/{z}/{x}/{y}",
@@ -41,10 +38,7 @@ interface LayerState {
 // --- Helper Function ---
 const createGeeLayer = (id: string, label: string, url: string, visible: boolean, zIndex: number): LayerState => {
   const olLayer = new TileLayer({
-    source: new XYZ({
-      url: url,
-      maxZoom: 20
-    }),
+    source: new XYZ({ url: url, maxZoom: 20 }),
     visible: visible,
     zIndex: zIndex,
   });
@@ -54,18 +48,29 @@ const createGeeLayer = (id: string, label: string, url: string, visible: boolean
 
 // --- React Component ---
 const AiSpatialPage: React.FC = () => {
-  const mapContainerRef = useRef<HTMLDivElement>(null); // Ref สำหรับ container หลักของแผนที่ (สำหรับ Fullscreen)
-  const mapTargetRef = useRef<HTMLDivElement>(null); // Ref สำหรับ div ที่ OpenLayers จะ render
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapTargetRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<Map | undefined>();
   const [layers, setLayers] = useState<LayerState[]>([]);
   const draggedItemIndex = useRef<number | null>(null);
 
-  // --- State ใหม่ ---
-  const [isLayerListVisible, setIsLayerListVisible] = useState(true); // State สำหรับซ่อน/แสดงรายการ Layer
-  const [isFullscreen, setIsFullscreen] = useState(false); // State สำหรับปุ่ม Fullscreen ใหม่
+  // --- State อัปเดต ---
+  const [isLayerListVisible, setIsLayerListVisible] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isIOS, setIsIOS] = useState(false); // State ใหม่สำหรับเช็ค iOS
 
-  // --- Map Initialization Effect ---
+  // --- Effects ---
+
+  // Effect ใหม่: เช็ค iOS ตอนเริ่ม
   useEffect(() => {
+    // navigator.userAgentData.platform (วิธีใหม่) อาจจะยังไม่ support
+    // ใช้ userAgent (วิธีเก่า) จะแม่นยำกว่าสำหรับเคสนี้
+    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
+  }, []);
+
+  // Map Initialization Effect (เหมือนเดิม)
+  useEffect(() => {
+    // ... (โค้ดสร้าง Layer และ Map ของคุณ) ...
     const layerOrder = [
       "Field Data 2025 (Styled)",
       "Field Data 2023 (Styled)",
@@ -83,10 +88,7 @@ const AiSpatialPage: React.FC = () => {
     const initialLayers = layerOrder
       .map((label, index) => {
         const url = geeLayersData[label];
-        if (!url) {
-          console.warn(`ไม่พบ URL สำหรับ Layer: ${label}`);
-          return null; 
-        }
+        if (!url) { console.warn(`ไม่พบ URL สำหรับ Layer: ${label}`); return null; }
         const id = label.replace(/\s+/g, '-').toLowerCase();
         const isVisible = defaultVisibleLayers.has(label);
         const zIndex = layerOrder.length - index; 
@@ -97,17 +99,13 @@ const AiSpatialPage: React.FC = () => {
     setLayers(initialLayers);
 
     const olMap = new Map({
-      // 4. อัปเดต: ลบ "new FullScreen()" ออกจาก controls
       controls: defaultControls(), 
       view: new View({
         center: fromLonLat([100.5, 13.7]),
         zoom: 6,
       }),
       layers: [
-        new TileLayer({
-          source: new OSM(),
-          zIndex: 0,
-        }),
+        new TileLayer({ source: new OSM(), zIndex: 0 }),
         ...initialLayers.map(layer => layer.olLayer)
       ],
     });
@@ -120,10 +118,12 @@ const AiSpatialPage: React.FC = () => {
     return () => {
       olMap.setTarget(undefined);
     };
-  }, []);
+  }, []); 
 
-  // --- Effect ใหม่: สำหรับติดตามสถานะ Fullscreen ---
+  // Effect อัปเดต: ติดตาม Fullscreen (สำหรับ Desktop เท่านั้น)
   useEffect(() => {
+    if (isIOS) return; // ไม่ต้องเพิ่ม Listener ถ้าเป็น iOS
+
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
@@ -131,9 +131,9 @@ const AiSpatialPage: React.FC = () => {
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
-  }, []);
+  }, [isIOS]); // ใส่ isIOS ใน dependency
 
-  // --- Layer Control Handlers ---
+  // ... (Handlers อื่นๆ เหมือนเดิม) ...
   const toggleLayerVisibility = (id: string) => {
     setLayers(prevLayers =>
       prevLayers.map(layer => {
@@ -146,20 +146,12 @@ const AiSpatialPage: React.FC = () => {
       })
     );
   };
-
-  const handleDragStart = (index: number) => {
-    draggedItemIndex.current = index;
-  };
-
-  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-  };
-
+  const handleDragStart = (index: number) => { draggedItemIndex.current = index; };
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); };
   const handleDrop = (dropIndex: number) => {
     if (draggedItemIndex.current === null) return;
     const dragIndex = draggedItemIndex.current;
     if (dragIndex === dropIndex) return;
-
     setLayers(prevLayers => {
       const newLayers = [...prevLayers];
       const [draggedLayer] = newLayers.splice(dragIndex, 1);
@@ -173,27 +165,38 @@ const AiSpatialPage: React.FC = () => {
     draggedItemIndex.current = null;
   };
 
-  // --- ฟังก์ชันใหม่: สำหรับปุ่ม Fullscreen ---
+  // --- ฟังก์ชัน Fullscreen (อัปเดต) ---
   const toggleCustomFullscreen = () => {
     if (!mapContainerRef.current) return;
 
-    if (!document.fullscreenElement) {
-      // เข้าโหมด Fullscreen
-      mapContainerRef.current.requestFullscreen().catch(err => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-      });
+    if (isIOS) {
+      // --- 1. Logic สำหรับ iOS ("Fake" Fullscreen) ---
+      const newFullscreenState = !isFullscreen;
+      setIsFullscreen(newFullscreenState);
+      
+      // บอก OpenLayers ให้วาดแผนที่ใหม่หลังจาก CSS-Transition
+      setTimeout(() => {
+        map?.updateSize(); 
+      }, 150); // 150ms delay
+
     } else {
-      // ออกจากโหมด Fullscreen
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
+      // --- 2. Logic สำหรับ Desktop ("Real" Fullscreen) ---
+      if (!document.fullscreenElement) {
+        mapContainerRef.current.requestFullscreen().catch(err => {
+          console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+        });
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
       }
     }
   };
 
-  // --- Render JSX ---
+  // --- Render JSX (อัปเดต) ---
   return (
     <div className="space-y-6 th-font">
-      {/* 1. Page Header (คงไว้ตามเดิม) */}
+      {/* 1. Page Header (เหมือนเดิม) */}
       <div className="text-center">
         <h1 className="text-3xl font-bold text-slate-800">AI Spatial Analysis</h1>
         <p className="mt-2 text-slate-600">
@@ -201,20 +204,25 @@ const AiSpatialPage: React.FC = () => {
         </p>
       </div>
 
-      {/* 2. Map Container 
-          - เพิ่ม ref={mapContainerRef}
-      */}
+      {/* 2. Map Container (อัปเดต className และ style) */}
       <div 
         ref={mapContainerRef} 
-        className="bg-slate-200 rounded-xl shadow-sm overflow-hidden relative"
-        style={{ height: 'calc(100vh - 20rem)' }}
+        className={
+          isFullscreen && isIOS
+            ? "fixed inset-0 z-50 w-screen h-screen bg-slate-200" // "Fake" Fullscreen CSS
+            : "bg-slate-200 rounded-xl shadow-sm overflow-hidden relative" // Normal CSS
+        }
+        style={
+          isFullscreen && isIOS
+            ? {} // ไม่ต้องใช้ inline style ตอน "Fake" Fullscreen
+            : { height: 'calc(100vh - 20rem)' } // Style ปกติ
+        }
       >
         {/* Map Target Div */}
         <div ref={mapTargetRef} className="w-full h-full" />
 
-        {/* 3. Layer Control Overlay (อัปเดต JSX) */}
-        <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm">
-          {/* ส่วนหัวที่คลิกได้ เพื่อซ่อน/แสดง */}
+        {/* 3. Layer Control Overlay (เหมือนเดิม) */}
+        <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-10">
           <div 
             className="flex justify-between items-center cursor-pointer select-none"
             onClick={() => setIsLayerListVisible(prev => !prev)}
@@ -225,8 +233,6 @@ const AiSpatialPage: React.FC = () => {
               <ChevronDown size={20} className="text-slate-600" />
             }
           </div>
-
-          {/* 4. รายการ Layer (แสดง/ซ่อน ตาม State) */}
           {isLayerListVisible && (
             <div className="mt-3">
               <p className="text-xs text-slate-500 mb-3"> (ลากเพื่อสลับลำดับ)</p>
@@ -240,18 +246,14 @@ const AiSpatialPage: React.FC = () => {
                     onDrop={() => handleDrop(index)}
                     className="flex items-center p-2 rounded bg-white/50 hover:bg-slate-100 cursor-grab active:cursor-grabbing"
                   >
-                    <span className="text-slate-400 mr-2" title="ลากเพื่อสลับลำดับ">
-                      <GripVertical size={18} />
-                    </span>
+                    <span className="text-slate-400 mr-2" title="ลากเพื่อสลับลำดับ"><GripVertical size={18} /></span>
                     <input
                       type="checkbox"
                       checked={layer.visible}
                       onChange={() => toggleLayerVisibility(layer.id)}
                       className="h-5 w-5 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 mr-3"
                     />
-                    <span className="text-sm text-slate-700 select-none">
-                      {layer.label}
-                    </span>
+                    <span className="text-sm text-slate-700 select-none">{layer.label}</span>
                   </div>
                 ))}
               </div>
@@ -259,7 +261,7 @@ const AiSpatialPage: React.FC = () => {
           )}
         </div>
 
-        {/* 5. ปุ่ม Fullscreen ใหม่ (สำหรับ Mobile) */}
+        {/* 4. ปุ่ม Fullscreen (เหมือนเดิม แต่ logic การคลิกเปลี่ยนแล้ว) */}
         <button
           onClick={toggleCustomFullscreen}
           className="absolute bottom-4 right-4 z-10 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
