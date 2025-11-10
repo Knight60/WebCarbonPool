@@ -51,6 +51,22 @@ interface LocationOption {
 }
 type SummaryRecord = Record<string, any>;
 
+// Config สีและชื่อสำหรับ Chart
+const seriesConfig: Record<string, { name: string, color: string }> = {
+  'P': { name: 'สวนสาธารณะ', color: '#FF7F7F' },
+  'MG': { name: 'สถานที่ราชการ', color: '#007086' },
+  'MP': { name: 'สวนเอกชน', color: '#00FFC5' },
+  'S': { name: 'แถบตามสาธารณูปโภค', color: '#C500FF' },
+  'E': { name: 'เพื่อเศรษฐกิจ', color: '#FFFF00' },
+  'NCO': { name: 'ธรรมชาติในเขตอนุรักษ์ (ทั่วไป)', color: '#38A800' },
+  'NCM': { name: 'ธรรมชาติในเขตอนุรักษ์ (ป่าชายเลน)', color: '#1A6B00' }, // ⭐️ FIX: เปลี่ยนสี NCM ให้ต่างจาก NCO
+  'NOO': { name: 'ธรรมชาตินอกเขตอนุรักษ์ (ทั่วไป)', color: '#98E600' },
+  'NOM': { name: 'ธรรมชาตินอกเขตอนุรักษ์ (ป่าชายเลน)', color: '#98E600' },
+  'W': { name: 'พื้นที่ทิ้งร้าง', color: '#FF5500' },
+};
+// Key ที่จะนำมา Stack
+const summaryStackKeys = ['P', 'MG', 'MP', 'S', 'E', 'NCO', 'NCM', 'NOO', 'NOM', 'W'];
+
 // --- Helper Function ---
 const createOlLayer = (id: string, label: string, url: string, visible: boolean, zIndex: number): LayerState => {
   let source: TileSource;
@@ -104,6 +120,27 @@ const AiSpatialPage: React.FC = () => {
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [summaryMetric, setSummaryMetric] = useState<'arearai' | 'coabsorb'>('arearai');
   const [searchQuery, setSearchQuery] = useState("");
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+
+  // Handler (Chart)
+  const toggleSeries = (key: string) => {
+    setHiddenSeries(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // Helper (Map Zoom)
+  const zoomToExtent = (mapInstance: Map | undefined, bbox: Extent) => {
+    if (!mapInstance) return; 
+    const mapExtent = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
+    mapInstance.getView().fit(mapExtent, { duration: 1000, padding: [50, 50, 50, 50] });
+  };
 
   // --- Effects (Map Init) ---
   useEffect(() => {
@@ -131,6 +168,7 @@ const AiSpatialPage: React.FC = () => {
       })
       .filter((layer): layer is LayerState => layer !== null);
     setLayers(initialLayers);
+    
     // ... (โค้ดสร้าง Map) ...
     const olMap = new Map({
       controls: defaultControls(), 
@@ -140,14 +178,18 @@ const AiSpatialPage: React.FC = () => {
         ...initialLayers.map(layer => layer.olLayer)
       ],
     });
+    
     if (mapTargetRef.current) { olMap.setTarget(mapTargetRef.current); }
     setMap(olMap);
     
     // Zoom ไปประเทศไทยตอนเริ่มต้น
-    zoomToExtent(THAILAND_BBOX);
+    zoomToExtent(olMap, THAILAND_BBOX);
 
-    return () => { olMap.setTarget(undefined); };
-  }, []); // <-- dependency array ว่าง ถูกต้องแล้ว
+    return () => { 
+      olMap.setTarget(undefined);
+      setMap(undefined);
+    };
+  }, []); 
 
   useEffect(() => {
     if (isIOS) return; 
@@ -172,14 +214,6 @@ const AiSpatialPage: React.FC = () => {
       console.error("Failed to fetch locations:", error);
       return [];
     }
-  };
-  
-  // *** แก้ไขฟังก์ชัน zoomToExtent ให้ใช้ .getView() จาก state ***
-  const zoomToExtent = (bbox: Extent) => {
-    // ใช้ map state แทนการส่ง map instance มา
-    if (!map) return; 
-    const mapExtent = transformExtent(bbox, 'EPSG:4326', 'EPSG:3857');
-    map.getView().fit(mapExtent, { duration: 1000, padding: [50, 50, 50, 50] });
   };
   
   useEffect(() => {
@@ -231,22 +265,19 @@ const AiSpatialPage: React.FC = () => {
   }, [selectedProv, selectedAmphoe]);
 
   // --- Handlers ---
-  
-  // *** นี่คือ 3 Handlers ที่อัปเดตแล้ว ***
   const handleProvinceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedProv(value);
     setSelectedAmphoe("all"); 
     setSelectedTambon("all");
-    setSearchQuery(""); // Reset การค้นหา
+    setSearchQuery(""); 
 
+    if (!map) return;
     if (value === "all") {
-      // 1. ถ้าเลือก "ทุกจังหวัด" ให้ซูมไปประเทศไทย
-      zoomToExtent(THAILAND_BBOX);
+      zoomToExtent(map, THAILAND_BBOX);
     } else {
-      // Logic เดิม: ซูมไปจังหวัดที่เลือก
       const option = provinces.find(p => p.value === value);
-      if (option) zoomToExtent(option.bbox);
+      if (option) zoomToExtent(map, option.bbox);
     }
   };
   
@@ -254,49 +285,44 @@ const AiSpatialPage: React.FC = () => {
     const value = e.target.value;
     setSelectedAmphoe(value);
     setSelectedTambon("all");
-    setSearchQuery(""); // Reset การค้นหา
+    setSearchQuery(""); 
 
+    if (!map) return;
     if (value === "all") {
-      // 2. ถ้าเลือก "ทุกอำเภอ" ให้ซูมไปจังหวัดแม่
       const parentProvOption = provinces.find(p => p.value === selectedProv);
       if (parentProvOption) {
-        zoomToExtent(parentProvOption.bbox);
+        zoomToExtent(map, parentProvOption.bbox);
       } else {
-        // กรณีฉุกเฉิน (ไม่ควรเกิด)
-        zoomToExtent(THAILAND_BBOX);
+        zoomToExtent(map, THAILAND_BBOX);
       }
     } else {
-      // Logic เดิม: ซูมไปอำเภอที่เลือก
       const option = amphoes.find(a => a.value === value);
-      if (option) zoomToExtent(option.bbox);
+      if (option) zoomToExtent(map, option.bbox);
     }
   };
 
   const handleTambonChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedTambon(value);
-    setSearchQuery(""); // Reset การค้นหา
+    setSearchQuery(""); 
 
+    if (!map) return;
     if (value === "all") {
-      // 3. ถ้าเลือก "ทุกตำบล" ให้ซูมไปอำเภอแม่
       const parentAmphoeOption = amphoes.find(a => a.value === selectedAmphoe);
       if (parentAmphoeOption) {
-        zoomToExtent(parentAmphoeOption.bbox);
+        zoomToExtent(map, parentAmphoeOption.bbox);
       } else {
-        // กรณีฉุกเฉิน (ถ้าไม่เจออำเภอ ให้ซูมไปจังหวัด)
         const parentProvOption = provinces.find(p => p.value === selectedProv);
         if (parentProvOption) {
-          zoomToExtent(parentProvOption.bbox);
+          zoomToExtent(map, parentProvOption.bbox);
         }
       }
     } else {
-      // Logic เดิม: ซูมไปตำบลที่เลือก
       const option = tambons.find(t => t.value === value);
-      if (option) zoomToExtent(option.bbox);
+      if (option) zoomToExtent(map, option.bbox);
     }
   };
   
-  // ... (Handlers อื่นๆ เหมือนเดิม) ...
   const toggleLayerVisibility = (id: string) => {
     setLayers(prevLayers =>
       prevLayers.map(layer => {
@@ -362,8 +388,6 @@ const AiSpatialPage: React.FC = () => {
     }
     return { codeKey: 'prov_code', nameKey: 'prov_namt', levelName: 'จังหวัด' };
   }, [summaryLevel]);
-
-  const summaryCols = ['P', 'MG', 'MP', 'S', 'E', 'NCO', 'NCM', 'NOO', 'NOM', 'W', 'Total', 'Overall'];
   
   const filteredSummaryData = useMemo(() => {
     if (!searchQuery) {
@@ -376,6 +400,25 @@ const AiSpatialPage: React.FC = () => {
       return code.includes(lowerCaseQuery) || name.includes(lowerCaseQuery);
     });
   }, [summaryData, searchQuery, codeKey, nameKey]);
+
+  // Logic คำนวณค่าสูงสุดสำหรับ Chart (แก้ไขตามคำขอ)
+  const maxValue = useMemo(() => {
+    if (filteredSummaryData.length === 0) {
+      return 1; // Default case
+    }
+    let currentMax = 1; // เริ่มต้นที่ 1 เพื่อป้องกันการหารด้วย 0
+    filteredSummaryData.forEach(record => {
+      summaryStackKeys.forEach(key => {
+        const rawValue = record[`${summaryMetric}_${key}`] || 0;
+        const value = parseFloat(String(rawValue).replace(/,/g, ''));
+        if (!isNaN(value) && value > currentMax) {
+          currentMax = value;
+        }
+      });
+    });
+    return currentMax;
+  }, [filteredSummaryData, summaryMetric]);
+  
   
   // --- Render JSX ---
   return (
@@ -403,9 +446,14 @@ const AiSpatialPage: React.FC = () => {
               : { height: 'calc(100vh - 20rem)' }
           }
         >
-          {/* ... (Controls ทั้งหมดบนแผนที่ เหมือนเดิม) ... */}
+          {/* Map Target Div */}
           <div ref={mapTargetRef} className="w-full h-full" />
+
+          {/* Controls บนแผนที่ */}
+          
+          {/* Layer Control Overlay */}
           <div className="absolute top-2 left-14 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
+            {/* ... (โค้ด Layer Control เหมือนเดิม) ... */}
             <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => setIsLayerListVisible(prev => !prev)}>
               <h2 className="text-lg font-semibold text-slate-800">ชั้นข้อมูล (Layers)</h2>
               {isLayerListVisible ? <ChevronUp size={20} className="text-slate-600" /> : <ChevronDown size={20} className="text-slate-600" />}
@@ -428,36 +476,16 @@ const AiSpatialPage: React.FC = () => {
               </div>
             )}
           </div>
+          
+          {/* Fullscreen Button */}
           <button onClick={toggleCustomFullscreen} className="absolute top-2 left-2 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400" title={isFullscreen ? "ออกจากโหมดเต็มจอ" : "แสดงผลเต็มจอ"}>
             {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
           </button>
-          <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30 th-font">
-            <div className="space-y-3">
-              <div className="flex items-center">
-                <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
-                <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedProv} onChange={handleProvinceChange}>
-                  <option value="all">ทุกจังหวัด</option>
-                  {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                </select>
-              </div>
-              <div className="flex items-center">
-                <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
-                <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedAmphoe} onChange={handleAmphoeChange} disabled={selectedProv === 'all' || amphoes.length === 0}>
-                  <option value="all">ทุกอำเภอ</option>
-                  {amphoes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                </select>
-              </div>
-              <div className="flex items-center">
-                <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
-                <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedTambon} onChange={handleTambonChange} disabled={selectedAmphoe === 'all' || tambons.length === 0}>
-                  <option value="all">ทุกตำบล</option>
-                  {tambons.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                </select>
-              </div>
-            </div>
-          </div>
+                    
+          {/* Opacity Editor Modal */}
           {opacityEditor && (
             <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-lg z-40 w-64">
+              {/* ... (โค้ด Opacity Editor เหมือนเดิม) ... */}
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-semibold text-slate-700 truncate pr-2" title={opacityEditor.label}>{opacityEditor.label}</h3>
                 <button onClick={() => setOpacityEditor(null)} className="text-slate-500 hover:text-slate-800"><X size={18} /></button>
@@ -470,17 +498,122 @@ const AiSpatialPage: React.FC = () => {
               <div className="text-center text-sm text-slate-700 mt-2">{Math.round((layers.find(l => l.id === opacityEditor.id)?.opacity || 1) * 100)}%</div>
             </div>
           )}
+
+          {/* Wrapper ใหม่สำหรับ Controls ด้านล่าง (Dropdown + Legend + Chart) */}
+          <div className="absolute bottom-4 left-4 right-4 z-30 flex h-44 space-x-2 th-font">
+
+            {/* Panel 1: Location Dropdowns */}
+            <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
+              {/* ... (โค้ด Dropdown เหมือนเดิม) ... */}
+              <div className="space-y-3">
+                <div className="flex items-center">
+                  <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
+                  <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedProv} onChange={handleProvinceChange}>
+                    <option value="all">ทุกจังหวัด</option>
+                    {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
+                <div className="flex items-center">
+                  <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
+                  <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedAmphoe} onChange={handleAmphoeChange} disabled={selectedProv === 'all' || amphoes.length === 0}>
+                    <option value="all">ทุกอำเภอ</option>
+                    {amphoes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
+                <div className="flex items-center">
+                  <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
+                  <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedTambon} onChange={handleTambonChange} disabled={selectedAmphoe === 'all' || tambons.length === 0}>
+                    <option value="all">ทุกตำบล</option>
+                    {tambons.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Panel 2: Chart Legend */}
+            <div className="flex-shrink-0 w-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg h-full overflow-y-auto space-y-1">
+              {Object.entries(seriesConfig).map(([key, { name, color }]) => (
+                <div
+                  key={key}
+                  onClick={() => toggleSeries(key)}
+                  className={`flex items-center space-x-2 cursor-pointer p-0.5 rounded ${hiddenSeries.has(key) ? 'opacity-40 line-through' : ''}`}
+                  title={`คลิกเพื่อซ่อน/แสดง ${name}`}
+                >
+                  <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }}></div>
+                  <span className="text-xs text-slate-700 truncate">{name}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Panel 3: Chart Area */}
+            {/* ⭐️ FIX: เพิ่ม padding-x และ gap-x สำหรับช่องว่างระหว่างแท่งกราฟ */}
+            <div className="flex-grow bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-full overflow-y-hidden overflow-x-auto px-2 py-2"> 
+              <div className="flex h-full gap-x-2" style={{ width: `${filteredSummaryData.length * 50 + (filteredSummaryData.length > 0 ? (filteredSummaryData.length - 1) * 8 : 0)}px` }}> {/* ⭐️ FIX: คำนวณความกว้างรวมเพื่อให้รวม gap ด้วย */}
+                {isSummaryLoading ? (
+                  <div className="text-slate-500 text-sm p-2">กำลังโหลด...</div>
+                ) : filteredSummaryData.length === 0 ? (
+                   <div className="text-slate-500 text-sm p-2">ไม่พบข้อมูล</div>
+                ) : (
+                  filteredSummaryData.map(record => {
+                    // คำนวณ Total ด้วยตนเอง (สำหรับ Title)
+                    const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
+                       const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                       return sum + parseFloat(String(rawValue).replace(/,/g, ''));
+                    }, 0);
+                    
+                    const barTitle = `${record[nameKey]} (${record[codeKey]}) \nTotal: ${formatNumber(calculatedTotal)}`;
+                    
+                    return (
+                      <div 
+                        key={record[codeKey]} 
+                        className="flex-shrink-0 w-12 h-full flex flex-col" 
+                        title={barTitle}
+                      >
+                        {/* Bar (Stacked) */}
+                        <div className="flex flex-col-reverse relative flex-grow mb-1"> {/* ⭐️ FIX: เพิ่ม mb-1 ให้มีช่องว่างด้านล่าง */}
+                          {summaryStackKeys.map(key => {
+                            const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                            const value = parseFloat(String(rawValue).replace(/,/g, ''));
+                            // คำนวณความสูงเทียบกับ maxValue ที่คำนวณไว้
+                            const heightPercent = maxValue === 0 ? 0 : (value / maxValue) * 100;
+                            const segmentTitle = `${seriesConfig[key].name}: ${formatNumber(value)}`;
+                            
+                            return (
+                              <div
+                                key={key}
+                                title={segmentTitle}
+                                className="transition-all"
+                                style={{
+                                  height: hiddenSeries.has(key) ? 0 : `${heightPercent}%`,
+                                  backgroundColor: seriesConfig[key].color,
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                        {/* X-Axis Label */}
+                        <div className="h-6 flex-shrink-0 text-xs text-slate-700 text-center truncate pt-1">
+                          {record[nameKey]}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+          </div>
+          
         </div>
       </div>
 
-      {/* 4. Dashboard (อัปเดต JSX) */}
+      {/* 4. Dashboard (ตารางสรุป) */}
       <div className="p-4 bg-white rounded-xl shadow-sm th-font">
-        {/* Header ของ Dashboard (เพิ่มกล่องค้นหา) */}
+        {/* ... (โค้ดตารางสรุปเหมือนเดิม) ... */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 space-y-2 md:space-y-0">
           <h2 className="text-xl font-bold text-slate-800">
             สรุปข้อมูลพื้นที่สีเขียว ( {summaryMetric === 'arearai' ? 'ไร่' : 'ตัน'} ) - ระดับ{levelName}
           </h2>
-          {/* กล่องเครื่องมือ (ค้นหา + สลับหน่วย) */}
           <div className="flex items-center space-x-2">
             <input
               type="text"
@@ -510,9 +643,11 @@ const AiSpatialPage: React.FC = () => {
                 <tr>
                   <th className="px-4 py-2 text-left font-semibold text-slate-600">รหัส</th>
                   <th className="px-4 py-2 text-left font-semibold text-slate-600">{levelName}</th>
-                  {summaryCols.map(col => (
+                  {summaryStackKeys.map(col => (
                     <th key={col} className="px-4 py-2 text-right font-semibold text-slate-600">{col}</th>
                   ))}
+                  <th className="px-4 py-2 text-right font-semibold text-slate-600">Total</th>
+                  <th className="px-4 py-2 text-right font-semibold text-slate-600">Overall</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
@@ -520,11 +655,13 @@ const AiSpatialPage: React.FC = () => {
                   <tr key={record[codeKey]} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-slate-700">{record[codeKey]}</td>
                     <td className="px-4 py-2 text-slate-900 font-medium">{record[nameKey]}</td>
-                    {summaryCols.map(col => (
+                    {summaryStackKeys.map(col => (
                       <td key={col} className="px-4 py-2 text-right text-slate-700">
                         {formatNumber(record[`${summaryMetric}_${col}`])}
                       </td>
                     ))}
+                    <td className="px-4 py-2 text-right text-slate-800 font-medium">{formatNumber(record[`${summaryMetric}_Total`])}</td>
+                    <td className="px-4 py-2 text-right text-slate-800 font-medium">{formatNumber(record[`${summaryMetric}_Overall`])}</td>
                   </tr>
                 ))}
               </tbody>
