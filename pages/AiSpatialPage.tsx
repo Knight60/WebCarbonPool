@@ -97,7 +97,7 @@ const formatNumber = (num: string | number | null | undefined) => {
   return val.toLocaleString("en-US", { maximumFractionDigits: 2 });
 };
 
-// 1. Helper Function ใหม่สำหรับดึงค่าที่จะใช้ Sort
+// Helper Function สำหรับดึงค่าที่จะใช้ Sort
 const getValueForSort = (record: SummaryRecord, key: string): string | number | null => {
   const val = record[key];
   if (val === null || val === undefined || val === '-') {
@@ -138,8 +138,6 @@ const AiSpatialPage: React.FC = () => {
   const [summaryMetric, setSummaryMetric] = useState<'arearai' | 'coabsorb'>('arearai');
   const [searchQuery, setSearchQuery] = useState("");
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
-
-  // 2. State ใหม่สำหรับ Sort
   const [sortConfig, setSortConfig] = useState<{ key: string; order: 'asc' | 'desc' } | null>(null);
 
   // Handler (Chart)
@@ -285,13 +283,22 @@ const AiSpatialPage: React.FC = () => {
   }, [selectedProv, selectedAmphoe]);
 
   // --- Handlers ---
+  
+  // ⭐️⭐️⭐️ FIX: อัปเดต 3 Handlers ให้ "จำ" Sort Config ⭐️⭐️⭐️
   const handleProvinceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedProv(value);
     setSelectedAmphoe("all"); 
     setSelectedTambon("all");
     setSearchQuery(""); 
-    setSortConfig(null); // 3. Reset Sort
+    
+    // Reset Sort (เฉพาะเมื่อไม่ได้ Sort ตามค่า Metric)
+    setSortConfig(prevConfig => {
+      if (prevConfig && (prevConfig.key.startsWith('arearai_') || prevConfig.key.startsWith('coabsorb_'))) {
+        return prevConfig;
+      }
+      return null;
+    });
 
     if (!map) return;
     if (value === "all") {
@@ -307,7 +314,14 @@ const AiSpatialPage: React.FC = () => {
     setSelectedAmphoe(value);
     setSelectedTambon("all");
     setSearchQuery(""); 
-    setSortConfig(null); // 3. Reset Sort
+    
+    // Reset Sort (เฉพาะเมื่อไม่ได้ Sort ตามค่า Metric)
+    setSortConfig(prevConfig => {
+      if (prevConfig && (prevConfig.key.startsWith('arearai_') || prevConfig.key.startsWith('coabsorb_'))) {
+        return prevConfig;
+      }
+      return null;
+    });
 
     if (!map) return;
     if (value === "all") {
@@ -327,7 +341,14 @@ const AiSpatialPage: React.FC = () => {
     const value = e.target.value;
     setSelectedTambon(value);
     setSearchQuery(""); 
-    setSortConfig(null); // 3. Reset Sort
+    
+    // Reset Sort (เฉพาะเมื่อไม่ได้ Sort ตามค่า Metric)
+    setSortConfig(prevConfig => {
+      if (prevConfig && (prevConfig.key.startsWith('arearai_') || prevConfig.key.startsWith('coabsorb_'))) {
+        return prevConfig;
+      }
+      return null;
+    });
 
     if (!map) return;
     if (value === "all") {
@@ -401,7 +422,7 @@ const AiSpatialPage: React.FC = () => {
     );
   };
 
-  // 4. Handler ใหม่สำหรับ Sort
+  // Handler (Sort)
   const handleSort = (key: string) => {
     setSortConfig(prevConfig => {
       let newOrder: 'asc' | 'desc' = 'desc'; // ค่าเริ่มต้นเมื่อคลิกคอลัมน์ใหม่
@@ -456,7 +477,7 @@ const AiSpatialPage: React.FC = () => {
     return currentMax;
   }, [filteredSummaryData, summaryMetric]);
 
-  // 5. useMemo ใหม่สำหรับ Sort Data
+  // useMemo (Sort Data)
   const sortedData = useMemo(() => {
     if (!sortConfig) {
       return filteredSummaryData; // คืนค่าที่กรองแล้ว ถ้าไม่มีการ sort
@@ -489,7 +510,7 @@ const AiSpatialPage: React.FC = () => {
   
   // --- Render JSX ---
   
-  // 6. Component ย่อยสำหรับไอคอน Sort
+  // Component ย่อยสำหรับไอคอน Sort
   const SortIcon = ({ forkey }: { forkey: string }) => {
     if (!sortConfig || sortConfig.key !== forkey) {
       return <span className="text-slate-400 opacity-30">↕</span>;
@@ -626,14 +647,14 @@ const AiSpatialPage: React.FC = () => {
 
             {/* Panel 3: Chart Area */}
             <div className="flex-grow bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-full overflow-y-hidden overflow-x-auto px-2 py-2">
-              {/* 7. อัปเดต: ใช้ `sortedData` */}
+              {/* อัปเดต: ใช้ `sortedData` */}
               <div className="flex h-full gap-x-2" style={{ width: `${sortedData.length * 50 + (sortedData.length > 0 ? (sortedData.length - 1) * 8 : 0)}px` }}>
                 {isSummaryLoading ? (
                   <div className="text-slate-500 text-sm p-2">กำลังโหลด...</div>
-                ) : sortedData.length === 0 ? ( // 7. อัปเดต
+                ) : sortedData.length === 0 ? ( // อัปเดต
                    <div className="text-slate-500 text-sm p-2">ไม่พบข้อมูล</div>
                 ) : (
-                  // 7. อัปเดต: ใช้ `sortedData`
+                  // อัปเดต: ใช้ `sortedData`
                   sortedData.map(record => {
                     // คำนวณ Total ด้วยตนเอง (สำหรับ Title)
                     const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
@@ -716,10 +737,10 @@ const AiSpatialPage: React.FC = () => {
         
         {isSummaryLoading ? (
           <div className="text-center text-slate-500">กำลังโหลดข้อมูลสรุป...</div>
-        ) : sortedData.length > 0 ? ( // 7. อัปเดต
+        ) : sortedData.length > 0 ? ( // อัปเดต
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
-              {/* 7. อัปเดต: <thead> พร้อม onClick และ Icons */}
+              {/* อัปเดต: <thead> พร้อม onClick และ Icons */}
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-4 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100" onClick={() => handleSort(codeKey)}>
@@ -760,7 +781,7 @@ const AiSpatialPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
-                {/* 7. อัปเดต: ใช้ `sortedData` */}
+                {/* อัปเดต: ใช้ `sortedData` */}
                 {sortedData.map(record => (
                   <tr key={record[codeKey]} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-slate-700">{record[codeKey]}</td>
