@@ -16,7 +16,6 @@ import {
 
 // --- Layer Data ---
 const geeLayersData: Record<string, string> = {
-  // ... (ข้อมูล Layer ของคุณเหมือนเดิม) ...
   "S2 Yearly Natural Color": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/eae2603d5c456ef7602b5a7f4c8e4fc2-6422288101c351ff0de1aebecacb950b/tiles/{z}/{x}/{y}",
   "S2 NDVI Monthly": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/f63f56cc4995333132eaa4a87f7b7b7b-70328d02c5285b7e396252c02fa6f918/tiles/{z}/{x}/{y}",
   "S1 Bands (Asset)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/9294a067ea586f65345ed09bcd903f0e-ef1b82a160421bd21b93b189f7399bb0/tiles/{z}/{x}/{y}",
@@ -53,24 +52,16 @@ const AiSpatialPage: React.FC = () => {
   const [map, setMap] = useState<Map | undefined>();
   const [layers, setLayers] = useState<LayerState[]>([]);
   const draggedItemIndex = useRef<number | null>(null);
-
-  // --- State อัปเดต ---
   const [isLayerListVisible, setIsLayerListVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isIOS, setIsIOS] = useState(false); // State ใหม่สำหรับเช็ค iOS
+  const [isIOS, setIsIOS] = useState(false);
 
   // --- Effects ---
-
-  // Effect ใหม่: เช็ค iOS ตอนเริ่ม
   useEffect(() => {
-    // navigator.userAgentData.platform (วิธีใหม่) อาจจะยังไม่ support
-    // ใช้ userAgent (วิธีเก่า) จะแม่นยำกว่าสำหรับเคสนี้
     setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
   }, []);
 
-  // Map Initialization Effect (เหมือนเดิม)
   useEffect(() => {
-    // ... (โค้ดสร้าง Layer และ Map ของคุณ) ...
     const layerOrder = [
       "Field Data 2025 (Styled)",
       "Field Data 2023 (Styled)",
@@ -120,9 +111,8 @@ const AiSpatialPage: React.FC = () => {
     };
   }, []); 
 
-  // Effect อัปเดต: ติดตาม Fullscreen (สำหรับ Desktop เท่านั้น)
   useEffect(() => {
-    if (isIOS) return; // ไม่ต้องเพิ่ม Listener ถ้าเป็น iOS
+    if (isIOS) return; 
 
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -131,9 +121,9 @@ const AiSpatialPage: React.FC = () => {
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
-  }, [isIOS]); // ใส่ isIOS ใน dependency
+  }, [isIOS]);
 
-  // ... (Handlers อื่นๆ เหมือนเดิม) ...
+  // --- Handlers ---
   const toggleLayerVisibility = (id: string) => {
     setLayers(prevLayers =>
       prevLayers.map(layer => {
@@ -165,16 +155,15 @@ const AiSpatialPage: React.FC = () => {
     draggedItemIndex.current = null;
   };
 
-  // --- ฟังก์ชัน Fullscreen (อัปเดต) ---
+  // Fullscreen Handler
   const toggleCustomFullscreen = () => {
     if (!mapContainerRef.current) return;
 
     if (isIOS) {
       // --- 1. Logic สำหรับ iOS ("Fake" Fullscreen) ---
-      const newFullscreenState = !isFullscreen;
-      setIsFullscreen(newFullscreenState);
+      setIsFullscreen(prev => !prev); // อัปเดต State
       
-      // บอก OpenLayers ให้วาดแผนที่ใหม่หลังจาก CSS-Transition
+      // เรียก updateSize() หลังจาก re-render/transition
       setTimeout(() => {
         map?.updateSize(); 
       }, 150); // 150ms delay
@@ -193,10 +182,10 @@ const AiSpatialPage: React.FC = () => {
     }
   };
 
-  // --- Render JSX (อัปเดต) ---
+  // --- Render JSX ---
   return (
     <div className="space-y-6 th-font">
-      {/* 1. Page Header (เหมือนเดิม) */}
+      {/* 1. Page Header */}
       <div className="text-center">
         <h1 className="text-3xl font-bold text-slate-800">AI Spatial Analysis</h1>
         <p className="mt-2 text-slate-600">
@@ -204,25 +193,27 @@ const AiSpatialPage: React.FC = () => {
         </p>
       </div>
 
-      {/* 2. Map Container (อัปเดต className และ style) */}
+      {/* 2. Map Container */}
       <div 
         ref={mapContainerRef} 
         className={
           isFullscreen && isIOS
-            ? "fixed inset-0 z-50 w-screen h-screen bg-slate-200" // "Fake" Fullscreen CSS
-            : "bg-slate-200 rounded-xl shadow-sm overflow-hidden relative" // Normal CSS
+            ? "fixed inset-0 z-50 w-screen h-screen bg-slate-200" // Fake Fullscreen
+            : "bg-slate-200 rounded-xl shadow-sm overflow-hidden relative" // Normal
         }
         style={
           isFullscreen && isIOS
-            ? {} // ไม่ต้องใช้ inline style ตอน "Fake" Fullscreen
-            : { height: 'calc(100vh - 20rem)' } // Style ปกติ
+            ? {}
+            : { height: 'calc(100vh - 20rem)' }
         }
       >
         {/* Map Target Div */}
         <div ref={mapTargetRef} className="w-full h-full" />
 
-        {/* 3. Layer Control Overlay (เหมือนเดิม) */}
-        <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-10">
+        {/* 3. Layer Control Overlay (อัปเดต z-index) */}
+        <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
+          {/* ^^^ เปลี่ยนจาก z-10 เป็น z-30 ^^^ */}
+          
           <div 
             className="flex justify-between items-center cursor-pointer select-none"
             onClick={() => setIsLayerListVisible(prev => !prev)}
@@ -261,12 +252,14 @@ const AiSpatialPage: React.FC = () => {
           )}
         </div>
 
-        {/* 4. ปุ่ม Fullscreen (เหมือนเดิม แต่ logic การคลิกเปลี่ยนแล้ว) */}
+        {/* 4. ปุ่ม Fullscreen (อัปเดต z-index) */}
         <button
           onClick={toggleCustomFullscreen}
-          className="absolute bottom-4 right-4 z-10 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          className="absolute bottom-4 right-4 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
           title={isFullscreen ? "ออกจากโหมดเต็มจอ" : "แสดงผลเต็มจอ"}
         >
+          {/* ^^^ เปลี่ยนจาก z-10 เป็น z-30 ^^^ */}
+          
           {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
         </button>
         
