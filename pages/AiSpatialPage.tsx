@@ -59,7 +59,7 @@ const seriesConfig: Record<string, { name: string, color: string }> = {
   'S': { name: 'แถบตามสาธารณูปโภค', color: '#C500FF' },
   'E': { name: 'เพื่อเศรษฐกิจ', color: '#FFFF00' },
   'NCO': { name: 'ธรรมชาติในเขตอนุรักษ์ (ทั่วไป)', color: '#38A800' },
-  'NCM': { name: 'ธรรมชาติในเขตอนุรักษ์ (ป่าชายเลน)', color: '#1A6B00' }, // ⭐️ FIX: เปลี่ยนสี NCM ให้ต่างจาก NCO
+  'NCM': { name: 'ธรรมชาติในเขตอนุรักษ์ (ป่าชายเลน)', color: '#1A6B00' },
   'NOO': { name: 'ธรรมชาตินอกเขตอนุรักษ์ (ทั่วไป)', color: '#98E600' },
   'NOM': { name: 'ธรรมชาตินอกเขตอนุรักษ์ (ป่าชายเลน)', color: '#98E600' },
   'W': { name: 'พื้นที่ทิ้งร้าง', color: '#FF5500' },
@@ -97,6 +97,23 @@ const formatNumber = (num: string | number | null | undefined) => {
   return val.toLocaleString("en-US", { maximumFractionDigits: 2 });
 };
 
+// 1. Helper Function ใหม่สำหรับดึงค่าที่จะใช้ Sort
+const getValueForSort = (record: SummaryRecord, key: string): string | number | null => {
+  const val = record[key];
+  if (val === null || val === undefined || val === '-') {
+      return null; // ถือว่าค่า null, undefined, หรือ '-' ต่ำที่สุด
+  }
+  
+  // ตรวจสอบว่าเป็นคอลัมน์ Metric (ตัวเลข) หรือไม่
+  if (key.startsWith('arearai_') || key.startsWith('coabsorb_')) {
+      const num = parseFloat(String(val).replace(/,/g, ''));
+      return isNaN(num) ? null : num;
+  }
+  
+  // ถ้าไม่ใช่ (เช่น รหัส, ชื่อ) ให้คืนค่าเป็น String
+  return String(val);
+};
+
 // --- React Component ---
 const AiSpatialPage: React.FC = () => {
   // States
@@ -121,6 +138,9 @@ const AiSpatialPage: React.FC = () => {
   const [summaryMetric, setSummaryMetric] = useState<'arearai' | 'coabsorb'>('arearai');
   const [searchQuery, setSearchQuery] = useState("");
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+
+  // 2. State ใหม่สำหรับ Sort
+  const [sortConfig, setSortConfig] = useState<{ key: string; order: 'asc' | 'desc' } | null>(null);
 
   // Handler (Chart)
   const toggleSeries = (key: string) => {
@@ -271,6 +291,7 @@ const AiSpatialPage: React.FC = () => {
     setSelectedAmphoe("all"); 
     setSelectedTambon("all");
     setSearchQuery(""); 
+    setSortConfig(null); // 3. Reset Sort
 
     if (!map) return;
     if (value === "all") {
@@ -286,6 +307,7 @@ const AiSpatialPage: React.FC = () => {
     setSelectedAmphoe(value);
     setSelectedTambon("all");
     setSearchQuery(""); 
+    setSortConfig(null); // 3. Reset Sort
 
     if (!map) return;
     if (value === "all") {
@@ -305,6 +327,7 @@ const AiSpatialPage: React.FC = () => {
     const value = e.target.value;
     setSelectedTambon(value);
     setSearchQuery(""); 
+    setSortConfig(null); // 3. Reset Sort
 
     if (!map) return;
     if (value === "all") {
@@ -378,6 +401,20 @@ const AiSpatialPage: React.FC = () => {
     );
   };
 
+  // 4. Handler ใหม่สำหรับ Sort
+  const handleSort = (key: string) => {
+    setSortConfig(prevConfig => {
+      let newOrder: 'asc' | 'desc' = 'desc'; // ค่าเริ่มต้นเมื่อคลิกคอลัมน์ใหม่
+      
+      if (prevConfig && prevConfig.key === key) {
+        // ถ้าคอลัมน์เดิม, สลับ order
+        newOrder = prevConfig.order === 'desc' ? 'asc' : 'desc';
+      }
+      
+      return { key, order: newOrder };
+    });
+  };
+
   // Helper (Dashboard)
   const { codeKey, nameKey, levelName } = useMemo(() => {
     if (summaryLevel === 'tambon') {
@@ -401,12 +438,12 @@ const AiSpatialPage: React.FC = () => {
     });
   }, [summaryData, searchQuery, codeKey, nameKey]);
 
-  // Logic คำนวณค่าสูงสุดสำหรับ Chart (แก้ไขตามคำขอ)
+  // Logic คำนวณค่าสูงสุดสำหรับ Chart
   const maxValue = useMemo(() => {
     if (filteredSummaryData.length === 0) {
-      return 1; // Default case
+      return 1;
     }
-    let currentMax = 1; // เริ่มต้นที่ 1 เพื่อป้องกันการหารด้วย 0
+    let currentMax = 1;
     filteredSummaryData.forEach(record => {
       summaryStackKeys.forEach(key => {
         const rawValue = record[`${summaryMetric}_${key}`] || 0;
@@ -418,9 +455,51 @@ const AiSpatialPage: React.FC = () => {
     });
     return currentMax;
   }, [filteredSummaryData, summaryMetric]);
+
+  // 5. useMemo ใหม่สำหรับ Sort Data
+  const sortedData = useMemo(() => {
+    if (!sortConfig) {
+      return filteredSummaryData; // คืนค่าที่กรองแล้ว ถ้าไม่มีการ sort
+    }
+    
+    const dataToSort = [...filteredSummaryData];
+    
+    dataToSort.sort((a, b) => {
+      const valA = getValueForSort(a, sortConfig.key);
+      const valB = getValueForSort(b, sortConfig.key);
+
+      // ตรรกะ: null จะอยู่ท้ายสุดเสมอ
+      if (valA === null && valB === null) return 0;
+      if (valA === null) return 1; // a (null) ไปอยู่หลัง b
+      if (valB === null) return -1; // b (null) ไปอยู่หลัง a
+
+      let comparison = 0;
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        comparison = valA - valB;
+      } else {
+        comparison = String(valA).localeCompare(String(valB));
+      }
+
+      return sortConfig.order === 'asc' ? comparison : -comparison;
+    });
+
+    return dataToSort;
+  }, [filteredSummaryData, sortConfig]); // ทำงานเมื่อข้อมูลที่กรองแล้ว หรือ config การ sort เปลี่ยน
   
   
   // --- Render JSX ---
+  
+  // 6. Component ย่อยสำหรับไอคอน Sort
+  const SortIcon = ({ forkey }: { forkey: string }) => {
+    if (!sortConfig || sortConfig.key !== forkey) {
+      return <span className="text-slate-400 opacity-30">↕</span>;
+    }
+    if (sortConfig.order === 'asc') {
+      return <span className="text-emerald-500">↑</span>;
+    }
+    return <span className="text-emerald-500">↓</span>;
+  };
+
   return (
     <> 
       <div className="space-y-6 th-font">
@@ -546,15 +625,16 @@ const AiSpatialPage: React.FC = () => {
             </div>
 
             {/* Panel 3: Chart Area */}
-            {/* ⭐️ FIX: เพิ่ม padding-x และ gap-x สำหรับช่องว่างระหว่างแท่งกราฟ */}
-            <div className="flex-grow bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-full overflow-y-hidden overflow-x-auto px-2 py-2"> 
-              <div className="flex h-full gap-x-2" style={{ width: `${filteredSummaryData.length * 50 + (filteredSummaryData.length > 0 ? (filteredSummaryData.length - 1) * 8 : 0)}px` }}> {/* ⭐️ FIX: คำนวณความกว้างรวมเพื่อให้รวม gap ด้วย */}
+            <div className="flex-grow bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-full overflow-y-hidden overflow-x-auto px-2 py-2">
+              {/* 7. อัปเดต: ใช้ `sortedData` */}
+              <div className="flex h-full gap-x-2" style={{ width: `${sortedData.length * 50 + (sortedData.length > 0 ? (sortedData.length - 1) * 8 : 0)}px` }}>
                 {isSummaryLoading ? (
                   <div className="text-slate-500 text-sm p-2">กำลังโหลด...</div>
-                ) : filteredSummaryData.length === 0 ? (
+                ) : sortedData.length === 0 ? ( // 7. อัปเดต
                    <div className="text-slate-500 text-sm p-2">ไม่พบข้อมูล</div>
                 ) : (
-                  filteredSummaryData.map(record => {
+                  // 7. อัปเดต: ใช้ `sortedData`
+                  sortedData.map(record => {
                     // คำนวณ Total ด้วยตนเอง (สำหรับ Title)
                     const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
                        const rawValue = record[`${summaryMetric}_${key}`] || 0;
@@ -570,7 +650,7 @@ const AiSpatialPage: React.FC = () => {
                         title={barTitle}
                       >
                         {/* Bar (Stacked) */}
-                        <div className="flex flex-col-reverse relative flex-grow mb-1"> {/* ⭐️ FIX: เพิ่ม mb-1 ให้มีช่องว่างด้านล่าง */}
+                        <div className="flex flex-col-reverse relative flex-grow mb-1">
                           {summaryStackKeys.map(key => {
                             const rawValue = record[`${summaryMetric}_${key}`] || 0;
                             const value = parseFloat(String(rawValue).replace(/,/g, ''));
@@ -609,7 +689,7 @@ const AiSpatialPage: React.FC = () => {
 
       {/* 4. Dashboard (ตารางสรุป) */}
       <div className="p-4 bg-white rounded-xl shadow-sm th-font">
-        {/* ... (โค้ดตารางสรุปเหมือนเดิม) ... */}
+        {/* ... (Header ของ Dashboard) ... */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 space-y-2 md:space-y-0">
           <h2 className="text-xl font-bold text-slate-800">
             สรุปข้อมูลพื้นที่สีเขียว ( {summaryMetric === 'arearai' ? 'ไร่' : 'ตัน'} ) - ระดับ{levelName}
@@ -636,22 +716,52 @@ const AiSpatialPage: React.FC = () => {
         
         {isSummaryLoading ? (
           <div className="text-center text-slate-500">กำลังโหลดข้อมูลสรุป...</div>
-        ) : filteredSummaryData.length > 0 ? (
+        ) : sortedData.length > 0 ? ( // 7. อัปเดต
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
+              {/* 7. อัปเดต: <thead> พร้อม onClick และ Icons */}
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-4 py-2 text-left font-semibold text-slate-600">รหัส</th>
-                  <th className="px-4 py-2 text-left font-semibold text-slate-600">{levelName}</th>
-                  {summaryStackKeys.map(col => (
-                    <th key={col} className="px-4 py-2 text-right font-semibold text-slate-600">{col}</th>
-                  ))}
-                  <th className="px-4 py-2 text-right font-semibold text-slate-600">Total</th>
-                  <th className="px-4 py-2 text-right font-semibold text-slate-600">Overall</th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100" onClick={() => handleSort(codeKey)}>
+                    <div className="flex items-center space-x-1">
+                      <span>รหัส</span>
+                      <SortIcon forkey={codeKey} />
+                    </div>
+                  </th>
+                  <th className="px-4 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100" onClick={() => handleSort(nameKey)}>
+                    <div className="flex items-center space-x-1">
+                      <span>{levelName}</span>
+                      <SortIcon forkey={nameKey} />
+                    </div>
+                  </th>
+                  {summaryStackKeys.map(col => {
+                    const key = `${summaryMetric}_${col}`;
+                    return (
+                      <th key={col} className="px-4 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100" onClick={() => handleSort(key)}>
+                        <div className="flex items-center justify-end space-x-1">
+                          <span>{col}</span>
+                          <SortIcon forkey={key} />
+                        </div>
+                      </th>
+                    );
+                  })}
+                  <th className="px-4 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100" onClick={() => handleSort(`${summaryMetric}_Total`)}>
+                    <div className="flex items-center justify-end space-x-1">
+                      <span>Total</span>
+                      <SortIcon forkey={`${summaryMetric}_Total`} />
+                    </div>
+                  </th>
+                  <th className="px-4 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100" onClick={() => handleSort(`${summaryMetric}_Overall`)}>
+                    <div className="flex items-center justify-end space-x-1">
+                      <span>Overall</span>
+                      <SortIcon forkey={`${summaryMetric}_Overall`} />
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-200">
-                {filteredSummaryData.map(record => (
+                {/* 7. อัปเดต: ใช้ `sortedData` */}
+                {sortedData.map(record => (
                   <tr key={record[codeKey]} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-slate-700">{record[codeKey]}</td>
                     <td className="px-4 py-2 text-slate-900 font-medium">{record[nameKey]}</td>
