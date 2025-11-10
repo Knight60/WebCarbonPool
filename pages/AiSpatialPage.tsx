@@ -22,7 +22,9 @@ const geeLayersData: Record<string, string> = {
   "SRTMGL1 RSEDTrans": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/7b5d79a905893ec6dedf3b010c454b9f-9d944be6749f89e5bbb006a727d03a0a/tiles/{z}/{x}/{y}",
   "Field Data 2025 (Styled)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/a13d346533bc3916bb4c7019e0489b3c-c7995220c0db1d6180d96150b13b5b4d/tiles/{z}/{x}/{y}",
   "Field Data 2023 (Styled)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/5fbe6fbbe80e59cdaf0eaa617c40b637-ff9d3eb67c344c4512e16b16c8214983/tiles/{z}/{x}/{y}",
-  "Zero Areas Mask (Simplified)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/3decc07a2c928888c0425bee63634d96-423933254052ba9509077aa19dfdd6bc/tiles/{z}/{x}/{y}"
+  "Zero Areas Mask (Simplified)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/3decc07a2c928888c0425bee63634d96-423933254052ba9509077aa19dfdd6bc/tiles/{z}/{x}/{y}",
+  "ESA AGBD 2022": "https://earthengine.googleapis.com/v1/projects/pisut-earthengine/maps/e32614cbeda6fd5d675f7203a5520e1b-1a6ae08bdee3f8f358006d84bf3a407b/tiles/{z}/{x}/{y}",
+  "GMap Hybrid":"https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
 };
 
 // --- Interfaces ---
@@ -65,15 +67,19 @@ const AiSpatialPage: React.FC = () => {
     const layerOrder = [
       "Field Data 2025 (Styled)",
       "Field Data 2023 (Styled)",
+      "ESA AGBD 2022",
       "S2 NDVI Monthly",
       "S2 Yearly Natural Color",
       "S1 Bands (Asset)",
       "SRTMGL1 RSEDTrans",
-      "Zero Areas Mask (Simplified)"
+      "Zero Areas Mask (Simplified)",
+      "GMap Hybrid",
     ];
     const defaultVisibleLayers = new Set([
       "Field Data 2025 (Styled)",
-      "S2 Yearly Natural Color"
+      "ESA AGBD 2022",
+      //"S2 Yearly Natural Color",
+      "GMap Hybrid",
     ]);
 
     const initialLayers = layerOrder
