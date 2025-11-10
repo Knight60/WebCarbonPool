@@ -1,0 +1,6 @@
+/* ย้าย OpenLayers Zoom Control (+/-) ไปมุมขวาบน */
+.ol-zoom {
+    top: 10px;
+    left: auto;
+    right: 10px;
+}

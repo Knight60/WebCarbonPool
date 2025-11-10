@@ -199,8 +199,8 @@ const AiSpatialPage: React.FC = () => {
         <div ref={mapTargetRef} className="w-full h-full" />
 
         {/* 3. Layer Control Overlay (❗️อัปเดตตำแหน่ง) */}
-        <div className="absolute top-16 left-4 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
-          {/* ^^^ เปลี่ยนจาก top-24 เป็น top-16 (4rem) ^^^ */}
+        <div className="absolute top-2 left-14 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
+          {/* ^^^ เปลี่ยนเป็น top-2 left-14 (0.5rem top, 3.5rem left) ^^^ */}
           
           <div 
             className="flex justify-between items-center cursor-pointer select-none"
@@ -240,12 +240,14 @@ const AiSpatialPage: React.FC = () => {
           )}
         </div>
 
-        {/* 4. ปุ่ม Fullscreen (ตำแหน่งเดิม) */}
+        {/* 4. ปุ่ม Fullscreen (❗️อัปเดตตำแหน่ง) */}
         <button
           onClick={toggleCustomFullscreen}
-          className="absolute top-2 left-14 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          className="absolute top-2 left-2 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
           title={isFullscreen ? "ออกจากโหมดเต็มจอ" : "แสดงผลเต็มจอ"}
         >
+          {/* ^^^ เปลี่ยนเป็น top-2 left-2 (0.5rem top, 0.5rem left) ^^^ */}
+          
           {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
         </button>
         
