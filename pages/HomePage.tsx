@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { MapIcon, CodeIcon, ChartBarIcon, TableIcon, TreeIcon, ScaleIcon, ChartPieIcon, MapPinIcon } from '../components/icons';
 import { Plot, Species } from '../types';
 import { useSurveyData } from '../hooks/useSurveyData';
@@ -6,6 +6,52 @@ import { useSpeciesData } from '../hooks/useSpeciesData';
 
 import aiSpatialImage from '../data/AiSpatial.png'; 
 import aiTaxonomyImage from '../data/AiTaxonomy.png';
+
+// --- Interfaces & Types (From AiSpatialPage) ---
+type SummaryRecord = Record<string, any>;
+interface LocationOption {
+  value: string;
+  label: string;
+  bbox: number[]; // Extent
+}
+
+// --- Config (From AiSpatialPage) ---
+// Config สีและชื่อสำหรับ Chart
+const seriesConfig: Record<string, { name: string, color: string }> = {
+  'P': { name: 'สวนสาธารณะ', color: '#FF7F7F' },
+  'MG': { name: 'สถานที่ราชการ', color: '#007086' },
+  'MP': { name: 'สวนเอกชน', color: '#00FFC5' },
+  'S': { name: 'แถบตามสาธารณูปโภค', color: '#C500FF' },
+  'E': { name: 'เพื่อเศรษฐกิจ', color: '#FFFF00' },
+  'NCO': { name: 'ธรรมชาติในเขตอนุรักษ์ (ทั่วไป)', color: '#38A800' },
+  'NCM': { name: 'ธรรมชาติในเขตอนุรักษ์ (ป่าชายเลน)', color: '#1A6B00' },
+  'NOO': { name: 'ธรรมชาตินอกเขตอนุรักษ์ (ทั่วไป)', color: '#98E600' },
+  'NOM': { name: 'ธรรมชาตินอกเขตอนุรักษ์ (ป่าชายเลน)', color: '#98E600' },
+  'W': { name: 'พื้นที่ทิ้งร้าง', color: '#FF5500' },
+};
+// Key ที่จะนำมา Stack
+const summaryStackKeys = ['P', 'MG', 'MP', 'S', 'E', 'NCO', 'NCM', 'NOO', 'NOM', 'W'];
+
+// --- Helper Functions (From AiSpatialPage) ---
+const formatNumber = (num: string | number | null | undefined) => {
+  if (num === null || num === undefined) return '-';
+  const val = parseFloat(String(num).replace(/,/g, ''));
+  if (isNaN(val)) return '-';
+  return val.toLocaleString("en-US", { maximumFractionDigits: 2 });
+};
+
+const getValueForSort = (record: SummaryRecord, key: string): string | number | null => {
+  const val = record[key];
+  if (val === null || val === undefined || val === '-') {
+      return null; 
+  }
+  if (key.startsWith('arearai_') || key.startsWith('coabsorb_')) {
+      const num = parseFloat(String(val).replace(/,/g, ''));
+      return isNaN(num) ? null : num;
+  }
+  return String(val);
+};
+
 
 // --- Page Components ---
 
@@ -96,6 +142,176 @@ const RegionPlotChart: React.FC<{ plots: Plot[] }> = ({ plots }) => {
     </div>
   );
 };
+
+// ⭐️ --- NEW COMPONENT: Spatial Summary Chart --- ⭐️
+const SpatialSummaryChart: React.FC = () => {
+  // --- State for this chart ---
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+  const [summaryData, setSummaryData] = useState<SummaryRecord[]>([]);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(true);
+
+  // --- Hardcoded settings for this simplified chart ---
+  const summaryMetric = 'arearai'; // Default to 'arearai'
+  const codeKey = 'prov_code';
+  const nameKey = 'prov_namt';
+  // Default sort by Total Area, descending
+  const sortConfig = { key: 'arearai_Total', order: 'desc' as 'desc' | 'asc' }; 
+  
+  // --- Handler ---
+  const toggleSeries = (key: string) => {
+    setHiddenSeries(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // --- Effect to fetch data ---
+  useEffect(() => {
+    const url = 'https://aigreen.dcce.go.th/rest/AiGreenCluster_PivotPRV?order=prov_code';
+    setIsSummaryLoading(true);
+    fetch(url)
+      .then(response => response.json())
+      .then((data: SummaryRecord[]) => {
+        setSummaryData(data.filter(record => record[codeKey] && record[codeKey] !== ' '));
+      })
+      .catch(error => {
+        console.error("Failed to fetch summary data:", error);
+        setSummaryData([]);
+      })
+      .finally(() => {
+        setIsSummaryLoading(false);
+      });
+  }, []); // Runs only once on mount
+
+  // --- Memo: Sort data ---
+  const sortedData = useMemo(() => {
+    const dataToSort = [...summaryData];
+    dataToSort.sort((a, b) => {
+      const valA = getValueForSort(a, sortConfig.key);
+      const valB = getValueForSort(b, sortConfig.key);
+      if (valA === null && valB === null) return 0;
+      if (valA === null) return 1;
+      if (valB === null) return -1;
+      let comparison = 0;
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        comparison = valA - valB;
+      } else {
+        comparison = String(valA).localeCompare(String(valB));
+      }
+      return sortConfig.order === 'asc' ? comparison : -comparison;
+    });
+    return dataToSort;
+  }, [summaryData]); // Re-sorts when data arrives
+
+  // --- Memo: Calculate Max Value for chart scaling ---
+  const maxValue = useMemo(() => {
+    if (sortedData.length === 0) return 1;
+    let currentMax = 1;
+    sortedData.forEach(record => {
+      summaryStackKeys.forEach(key => {
+        const rawValue = record[`${summaryMetric}_${key}`] || 0;
+        const value = parseFloat(String(rawValue).replace(/,/g, ''));
+        if (!isNaN(value) && value > currentMax) {
+          currentMax = value;
+        }
+      });
+    });
+    return currentMax;
+  }, [sortedData]); // Recalculates when sortedData changes
+
+  return (
+    <section>
+      <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 text-center">
+        สรุปพื้นที่สีเขียวรายจังหวัด
+      </h2>
+      <div className="bg-white p-6 md:p-8 rounded-xl shadow-sm">
+        <p className="text-center text-slate-600 mb-6">
+          กราฟแสดง tổng (Total) พื้นที่สีเขียว (หน่วย: ไร่) ในเขตเมือง แยกตามประเภท และจัดเรียงตามจังหวัดที่มีพื้นที่สีเขียวรวมมากที่สุด
+        </p>
+        {/* Chart UI: Legend + Chart Area */}
+        <div className="flex flex-col md:flex-row h-auto md:h-64 space-y-4 md:space-y-0 md:space-x-4 th-font">
+          
+          {/* Panel 1: Chart Legend */}
+          <div className="flex-shrink-0 w-full md:w-48 bg-slate-50 p-3 rounded-lg shadow-inner h-full overflow-y-auto space-y-1">
+            <h4 className="text-sm font-semibold text-slate-700 mb-2">คำอธิบายสัญลักษณ์</h4>
+            {Object.entries(seriesConfig).map(([key, { name, color }]) => (
+              <div
+                key={key}
+                onClick={() => toggleSeries(key)}
+                className={`flex items-center space-x-2 cursor-pointer p-0.5 rounded ${hiddenSeries.has(key) ? 'opacity-40 line-through' : ''}`}
+                title={`คลิกเพื่อซ่อน/แสดง ${name}`}
+              >
+                <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }}></div>
+                <span className="text-xs text-slate-700 truncate">{name}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Panel 2: Chart Area */}
+          <div className="flex-grow bg-slate-50 rounded-lg shadow-inner h-64 md:h-full overflow-y-hidden overflow-x-auto px-2 py-2">
+            <div className="flex h-full gap-x-2" style={{ width: `${sortedData.length * 50 + (sortedData.length > 0 ? (sortedData.length - 1) * 8 : 0)}px` }}>
+              {isSummaryLoading ? (
+                <div className="text-slate-500 text-sm p-2">กำลังโหลด...</div>
+              ) : sortedData.length === 0 ? (
+                 <div className="text-slate-500 text-sm p-2">ไม่พบข้อมูล</div>
+              ) : (
+                sortedData.map(record => {
+                  const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
+                     const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                     return sum + parseFloat(String(rawValue).replace(/,/g, ''));
+                  }, 0);
+                  
+                  const barTitle = `${record[nameKey]} (${record[codeKey]}) \nTotal: ${formatNumber(calculatedTotal)} ไร่`;
+                  
+                  return (
+                    <div 
+                      key={record[codeKey]} 
+                      className="flex-shrink-0 w-12 h-full flex flex-col" 
+                      title={barTitle}
+                    >
+                      {/* Bar (Stacked) */}
+                      <div className="flex flex-col-reverse relative flex-grow mb-1">
+                        {summaryStackKeys.map(key => {
+                          const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                          const value = parseFloat(String(rawValue).replace(/,/g, ''));
+                          const heightPercent = maxValue === 0 ? 0 : (value / maxValue) * 100;
+                          const segmentTitle = `${seriesConfig[key].name}: ${formatNumber(value)}`;
+                          
+                          return (
+                            <div
+                              key={key}
+                              title={segmentTitle}
+                              className="transition-all"
+                              style={{
+                                height: hiddenSeries.has(key) ? 0 : `${heightPercent}%`,
+                                backgroundColor: seriesConfig[key].color,
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                      {/* X-Axis Label */}
+                      <div className="h-6 flex-shrink-0 text-xs text-slate-700 text-center truncate pt-1">
+                        {record[nameKey]}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+// ⭐️ --- END OF NEW COMPONENT --- ⭐️
+
 
 const SummaryCard: React.FC<{ icon: React.ElementType; value: string; label: string; color: string }> = ({ icon: Icon, value, label, color }) => (
   <div className="bg-white p-6 rounded-xl shadow-md flex items-center space-x-4 transition-all hover:shadow-lg hover:scale-105">
@@ -381,7 +597,7 @@ const HomePage: React.FC = () => {
 
     return (
       <>
-        {/* Project Scope Section */}
+        {/* Project Scope Section (Original structure restored) */}
         <section>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-6 text-center">ขอบเขตโครงการ</h2>
           <div className="bg-white p-6 md:p-8 rounded-xl shadow-sm flex flex-col lg:flex-row items-center gap-8">
@@ -410,6 +626,9 @@ const HomePage: React.FC = () => {
             ))}
           </div>
         </section>
+
+        {/* ⭐️ ADDED: New section for the Spatial Summary Chart ⭐️ */}
+        <SpatialSummaryChart />
 
         {/* Operational Procedure Section */}
         <section>
