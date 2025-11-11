@@ -1,8 +1,11 @@
+// pages/SurveyPlotsPage.tsx
 import React, { useState, useMemo } from 'react';
-import { Plot } from '../types';
-import { MapPinIcon } from '../components/icons';
+// 1. แก้ไข Path ให้ถูกต้อง (ถอยกลับ 1 ขั้น)
+import { Plot } from '../types'; 
+// import { MapPinIcon } from '../components/icons'; // <-- ลบ import นี้
 import { useSurveyData } from '../hooks/useSurveyData';
 import { useIVI } from '../hooks/useIVI';
+import { IviModal } from './IviModal'; // <-- 2. Import จากโฟลเดอร์เดียวกัน
 
 type SortDirection = 'ascending' | 'descending';
 interface SortConfig {
@@ -10,26 +13,38 @@ interface SortConfig {
   direction: SortDirection;
 }
 
+// 3. ฝังโค้ด SVG ของ MapPinIcon (หมุดปัก) ลงไปตรงนี้
+const MapPinIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth="1.5"
+    stroke="currentColor"
+    {...props}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"
+    />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"
+    />
+  </svg>
+);
+
 const SurveyPlotsPage: React.FC = () => {
-  // Hook สำหรับตารางแปลง
+  // --- นี่คือ Logic ทั้งหมดที่ต้องมี ---
   const { plots: allPlots, loading, error } = useSurveyData();
-  
-  // Hook สำหรับตาราง IVI
   const { plots: iviData, loading: iviLoading, error: iviError } = useIVI();
-
-  // State สำหรับการค้นหา
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // State สำหรับการ Sort ตารางแปลง
   const [sortConfig, setSortConfig] = useState<SortConfig | null>({ key: 'no', direction: 'ascending' });
-
-  // State ใหม่สำหรับเก็บ ID แปลงที่ถูกเลือก
   const [selectedPlotId, setSelectedPlotId] = useState<string | null>(null);
 
-
-  // --- Logic การกรองและการเรียงลำดับสำหรับตารางแปลง (ตารางที่ 1) ---
   const filteredPlots = useMemo(() => {
-    // การค้นหาจะกรอง "รายการแปลง" เสมอ
     if (!searchTerm) return allPlots;
     const lowercasedFilter = searchTerm.toLowerCase();
     return allPlots.filter(plot => 
@@ -106,29 +121,21 @@ const SurveyPlotsPage: React.FC = () => {
       </th>
     );
   };
-  // --- (จบส่วน Logic ตารางที่ 1) ---
 
-
-  // *** 3. Logic การกรองสำหรับตาราง IVI (ตารางที่ 2) [แก้ไขแล้ว] ***
   const filteredIviData = useMemo(() => {
-    // ถ้ายังไม่ได้เลือกแปลง ให้ return array ว่าง
     if (!selectedPlotId) {
       return [];
     }
-
-    // กรองข้อมูล IVI เฉพาะแปลงที่เลือก (selectedPlotId) เท่านั้น
-    // ไม่ต้องสนใจ searchTerm
-    const filtered = iviData.filter((item: any) => item.Plot === selectedPlotId);
-    
-    return filtered;
-
-  }, [selectedPlotId, iviData]); // <-- เอา searchTerm ออกจาก dependency array
-
+    // นี่คือ Logic ที่แก้บั๊กครั้งก่อน (ที่ใช้ parser ผิด)
+    // ตรวจสอบให้แน่ใจว่า useIVI.ts ใช้ parseIviData นะครับ
+    return iviData.filter((item: any) => item.Plot === selectedPlotId);
+  }, [selectedPlotId, iviData]);
+  // --- จบส่วน Logic ---
 
   return (
-    <div className="th-font flex flex-col p-4">
+    <div className="th-font flex flex-col h-[calc(100vh-12rem)] p-4">
       
-      {/* === ส่วนหัวและการค้นหา === */}
+      {/* ส่วนหัว */}
       <div className="flex-shrink-0">
         <div className="text-center mb-4">
           <h1 className="text-3xl font-bold text-slate-800">แปลงสำรวจถาวร</h1>
@@ -137,6 +144,7 @@ const SurveyPlotsPage: React.FC = () => {
           </p>
         </div>
         
+        {/* ช่องค้นหา */}
         <div className="bg-white p-4 rounded-xl shadow-sm border-b border-slate-200 sticky top-0 z-20">
           <input
             type="text"
@@ -147,13 +155,13 @@ const SurveyPlotsPage: React.FC = () => {
             aria-label="ค้นหาข้อมูล"
           />
           <p className="text-xs text-slate-500 mt-2">
-            * คลิกที่แถวของแปลงเพื่อดูข้อมูล IVI ด้านล่าง
+            * คลิกที่แถวของแปลงเพื่อดูข้อมูล IVI
           </p>
         </div>
       </div>
 
-      {/* === ตารางที่ 1: แปลงสำรวจ === */}
-      <div className="flex-grow overflow-auto bg-white rounded-xl shadow-sm mt-4 h-[calc(50vh-6rem)]">
+      {/* ตารางแปลงสำรวจหลัก */}
+      <div className="flex-grow overflow-auto bg-white rounded-xl shadow-sm mt-4">
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-700 sticky top-0 z-10">
             <tr>
@@ -184,19 +192,15 @@ const SurveyPlotsPage: React.FC = () => {
                 </td>
               </tr>
             ) : error ? (
-              <tr>
-                <td colSpan={14} className="text-center py-16 text-red-500">
-                  <p>{error}</p>
-                </td>
-              </tr>
+               <tr><td colSpan={14} className="text-center py-16 text-red-500"><p>{error}</p></td></tr>
             ) : sortedFilteredPlots.length > 0 ? (
               sortedFilteredPlots.map((plot) => (
                 <tr 
                   key={plot.id} 
                   className={`hover:bg-emerald-50 transition-colors cursor-pointer ${
-                    selectedPlotId === plot.id ? 'bg-emerald-100' : '' // ไฮไลท์แถวที่เลือก
+                    selectedPlotId === plot.id ? 'bg-emerald-100' : ''
                   }`}
-                  onClick={() => setSelectedPlotId(plot.id)} // ตั้งค่าแปลงที่เลือก
+                  onClick={() => setSelectedPlotId(plot.id)} // <--- คลิกเพื่อเปิด Modal
                 >
                   <td className="px-3 py-4 whitespace-nowrap text-sm text-center">
                     <a href={plot.gmap} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:text-emerald-800 inline-block" aria-label={`View map for ${plot.name}`}>
@@ -229,86 +233,16 @@ const SurveyPlotsPage: React.FC = () => {
         </table>
       </div>
 
-      {/* === ตารางที่ 2: ข้อมูล IVI === */}
-      <div className="mt-8">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-slate-800">
-            {selectedPlotId 
-              ? `ข้อมูลดัชนีความสำคัญ (IVI) - แปลง ${selectedPlotId}`
-              : "ข้อมูลดัชนีความสำคัญ (IVI)"
-            }
-          </h2>
-          {selectedPlotId && (
-            <button 
-              type="button"
-              onClick={() => setSelectedPlotId(null)}
-              className="px-3 py-1 text-sm text-sky-700 bg-sky-100 hover:bg-sky-200 rounded-full"
-            >
-              ล้างการเลือก
-            </button>
-          )}
-        </div>
-      </div>
-      <div className="flex-grow overflow-auto bg-white rounded-xl shadow-sm h-[calc(50vh-6rem)]">
-        <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-sky-800 sticky top-0 z-10">
-            <tr>
-              <th scope="col" className="px-3 py-3 text-left text-sm font-bold text-white">ลำดับ</th>
-              <th scope="col" className="px-3 py-3 text-left text-sm font-bold text-white">ชื่อไทย</th>
-              <th scope="col" className="px-3 py-3 text-left text-sm font-bold text-white">ชื่อวิทยาศาสตร์</th>
-              <th scope="col" className="px-3 py-3 text-right text-sm font-bold text-white">IVI (2025)</th>
-              <th scope="col" className="px-3 py-3 text-right text-sm font-bold text-white">RD (2025)</th>
-              <th scope="col" className="px-3 py-3 text-right text-sm font-bold text-white">RBA (2025)</th>
-              <th scope="col" className="px-3 py-3 text-right text-sm font-bold text-white">จำนวนต้น</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-slate-200">
-            {iviLoading ? (
-              <tr>
-                <td colSpan={7} className="text-center py-16 text-slate-500">
-                  <div className="flex justify-center items-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-sky-500"></div>
-                    <span className="ml-4">กำลังโหลดข้อมูล IVI...</span>
-                  </div>
-                </td>
-              </tr>
-            ) : iviError ? (
-              <tr>
-                <td colSpan={7} className="text-center py-16 text-red-500">
-                  <p>{iviError}</p>
-                </td>
-              </tr>
-            ) : !selectedPlotId ? (
-              // สถานะที่ 1: ยังไม่ได้เลือกแปลง
-              <tr>
-                <td colSpan={7} className="text-center py-16 text-slate-500">
-                  <p>กรุณาคลิกเลือกแปลงจากตารางด้านบนเพื่อดูข้อมูล IVI</p>
-                </td>
-              </tr>
-            ) : filteredIviData.length > 0 ? (
-              // สถานะที่ 2: เลือกแปลงแล้ว และมีข้อมูล
-              filteredIviData.map((item: any, index: number) => (
-                <tr key={`${item.Plot}-${item.No}-${index}`} className="hover:bg-sky-50 transition-colors">
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-slate-600">{item.No}</td>
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-slate-600">{item.Thai_Name}</td>
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-slate-600 italic">{item.Botanical_NoAuthor}</td>
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-slate-600 text-right">{item.IVI_2025}</td>
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-slate-600 text-right">{item.RD_2025}</td>
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-slate-600 text-right">{item.RBA_2025}</td>
-                  <td className="px-3 py-4 whitespace-nowrap text-sm text-slate-600 text-right">{item.Count_Tag}</td>
-                </tr>
-              ))
-            ) : (
-              // สถานะที่ 3: เลือกแปลงแล้ว แต่ไม่พบข้อมูล
-              <tr>
-                <td colSpan={7} className="text-center py-16 text-slate-500">
-                  <p>ไม่พบข้อมูลพันธุ์ไม้สำหรับแปลง {selectedPlotId}</p>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* 4. ส่วน Modal (จะแสดงทับเมื่อ selectedPlotId ไม่ใช่ null) */}
+      {selectedPlotId && (
+        <IviModal
+          plotId={selectedPlotId}
+          data={filteredIviData}
+          loading={iviLoading}
+          error={iviError}
+          onClose={() => setSelectedPlotId(null)}
+        />
+      )}
     </div>
   );
 };
