@@ -21,25 +21,11 @@ import {
 // Bounding Box ของประเทศไทย (จาก index.js)
 const THAILAND_BBOX: Extent = [96.692891, 5.122222, 106.192853, 21.402443];
 
-// --- Layer Data ---
-const geeLayersData: Record<string, string> = {
-  "AIGreen WMS": "https://aigreen.dcce.go.th/geoserver/aigreen/wms",
-  "S2 Yearly Natural Color": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/eae2603d5c456ef7602b5a7f4c8e4fc2-6422288101c351ff0de1aebecacb950b/tiles/{z}/{x}/{y}",
-  "S2 NDVI Monthly": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/f63f56cc4995333132eaa4a87f7b7b7b-70328d02c5285b7e396252c02fa6f918/tiles/{z}/{x}/{y}",
-  "S1 Bands (Asset)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/9294a067ea586f65345ed09bcd903f0e-ef1b82a160421bd21b93b189f7399bb0/tiles/{z}/{x}/{y}",
-  "SRTMGL1 RSEDTrans": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/7b5d79a905893ec6dedf3b010c454b9f-9d944be6749f89e5bbb006a727d03a0a/tiles/{z}/{x}/{y}",
-  "Field Data 2025 (Styled)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/a13d346533bc3916bb4c7019e0489b3c-c7995220c0db1d6180d96150b13b5b4d/tiles/{z}/{x}/{y}",
-  "Field Data 2023 (Styled)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/5fbe6fbbe80e59cdaf0eaa617c40b637-ff9d3eb67c344c4512e16b16c8214983/tiles/{z}/{x}/{y}",
-  "Zero Areas Mask (Simplified)": "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/3decc07a2c928888c0425bee63634d96-423933254052ba9509077aa19dfdd6bc/tiles/{z}/{x}/{y}",
-  "ESA AGBD 2022": "https://earthengine.googleapis.com/v1/projects/pisut-earthengine/maps/e32614cbeda6fd5d675f7203a5520e1b-1a6ae08bdee3f8f358006d84bf3a407b/tiles/{z}/{x}/{y}",
-  "GMap Hybrid":"https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-};
-
 // --- Interfaces ---
 interface LayerState {
   id: string;
   label: string;
-  url: string;
+  url: string; // เก็บ URL หลัก (สำหรับ WMS) หรือ URL template (สำหรับ XYZ)
   visible: boolean;
   olLayer: TileLayer<TileSource>;
   opacity: number;
@@ -50,6 +36,134 @@ interface LocationOption {
   bbox: Extent;
 }
 type SummaryRecord = Record<string, any>;
+
+// Interface สำหรับ Config WMS
+interface WMSConnection {
+  url: string;
+  params: Record<string, any>;
+}
+
+// Interface สำหรับ Config Layer
+interface LayerConfig {
+  id: string;
+  label: string;
+  type: 'WMS' | 'XYZ';
+  /**
+   * - WMS: WMSConnection object
+   * - XYZ: URL string template
+   */
+  connection: WMSConnection | string;
+  visible: boolean; // ค่าเริ่มต้นการแสดงผล
+  symbol: string | null; // Placeholder สำหรับสัญลักษณ์ (ยังไม่ได้ใช้งาน)
+}
+
+
+// --- ⭐️ Layer Configuration ⭐️ ---
+// Array นี้จะกำหนด "ลำดับ" การแสดงผลใน Layer List (index 0 อยู่บนสุด)
+// และค่า zIndex บนแผนที่ (index 0 จะมี zIndex สูงสุด)
+const configLayers: LayerConfig[] = [
+  {
+    id: "aigreen-wms",
+    label: "ขอบเขตการปกครอง",
+    type: "WMS",
+    connection: {
+      url: 'https://aigreen.dcce.go.th/geoserver/aigreen/wms',
+      params: { 'LAYERS': 'aigreen:AiGreenDLA,aigreen:Administration', 'TILED': true, 'TRANSPARENT': true, 'FORMAT': 'image/png' },
+    },
+    visible: true,
+    symbol: null,
+  },
+  {
+    id: "field-data-2025-styled",
+    label: "ต้นไม้ในแปลงถาวรปี 2025",
+    type: "XYZ",
+    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/a13d346533bc3916bb4c7019e0489b3c-c7995220c0db1d6180d96150b13b5b4d/tiles/{z}/{x}/{y}",
+    visible: true,
+    symbol: null,
+  },
+  {
+    id: "field-data-2023-styled",
+    label: "ต้นไม้ในแปลงถาวรปี 2023",
+    type: "XYZ",
+    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/5fbe6fbbe80e59cdaf0eaa617c40b637-ff9d3eb67c344c4512e16b16c8214983/tiles/{z}/{x}/{y}",
+    visible: false,
+    symbol: null,
+  },
+  {
+    id: "esa-agbd-2022",
+    label: "ESA AGBD 2022",
+    type: "XYZ",
+    connection: "https://earthengine.googleapis.com/v1/projects/pisut-earthengine/maps/e32614cbeda6fd5d675f7203a5520e1b-1a6ae08bdee3f8f358006d84bf3a407b/tiles/{z}/{x}/{y}",
+    visible: true,
+    symbol: null,
+  },
+  // --- ⭐️ เพิ่มชั้นข้อมูลใหม่ตามคำขอ ⭐️ ---
+  {
+    id: "green-area-type",
+    label: "ประเภทพื้นที่สีเขียว", // แก้ไขจาก "Geen"
+    type: "WMS",
+    connection: {
+      url: 'https://aigreen.dcce.go.th/geoserver/aigreen/wms',
+      params: { 
+        'LAYERS': 'aigreen:AiGreenTypesTIF', // ดึงมาจาก URL
+        'TILED': true, 
+        'TRANSPARENT': true, 
+        'FORMAT': 'image/png' 
+      },
+    },
+    visible: false, // ตั้งค่าเริ่มต้นเป็น ไม่แสดง
+    symbol: null,
+  },
+  // --- ⭐️ สิ้นสุดชั้นข้อมูลใหม่ ⭐️ ---
+  {
+    id: "s2-ndvi-monthly",
+    label: "S2 NDVI เฉลี่ยรายเดือน ปี 2024",
+    type: "XYZ",
+    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/f63f56cc4995333132eaa4a87f7b7b7b-70328d02c5285b7e396252c02fa6f918/tiles/{z}/{x}/{y}",
+    visible: false,
+    symbol: null,
+  },
+  {
+    id: "s2-yearly-natural-color",
+    label: "S2 5Bands เฉลี่ยรายปี 2024",
+    type: "XYZ",
+    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/eae2603d5c456ef7602b5a7f4c8e4fc2-6422288101c351ff0de1aebecacb950b/tiles/{z}/{x}/{y}",
+    visible: false,
+    symbol: null,
+  },
+  {
+    id: "s1-bands-(asset)",
+    label: "S1 (VV,VH,VVdVH) เฉลี่ยรายปี 2024",
+    type: "XYZ",
+    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/9294a067ea586f65345ed09bcd903f0e-ef1b82a160421bd21b93b189f7399bb0/tiles/{z}/{x}/{y}",
+    visible: false,
+    symbol: null,
+  },
+  {
+    id: "srtmgl1-rsedtrans",
+    label: "ความสูงเชิงเลข SRTM GL1",
+    type: "XYZ",
+    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/7b5d79a905893ec6dedf3b010c454b9f-9d944be6749f89e5bbb006a727d03a0a/tiles/{z}/{x}/{y}",
+    visible: false,
+    symbol: null,
+  },
+  /*{
+    id: "zero-areas-mask-(simplified)",
+    label: "Zero Areas Mask (Simplified)",
+    type: "XYZ",
+    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/3decc07a2c928888c0425bee63634d96-423933254052ba9509077aa19dfdd6bc/tiles/{z}/{x}/{y}",
+    visible: false,
+    symbol: null,
+  },
+  {
+    id: "gmap-hybrid",
+    label: "GMap Hybrid",
+    type: "XYZ",
+    connection: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+    visible: true,
+    symbol: null,
+  }*/
+];
 
 // Config สีและชื่อสำหรับ Chart
 const seriesConfig: Record<string, { name: string, color: string }> = {
@@ -68,26 +182,46 @@ const seriesConfig: Record<string, { name: string, color: string }> = {
 const summaryStackKeys = ['P', 'MG', 'MP', 'S', 'E', 'NCO', 'NCM', 'NOO', 'NOM', 'W'];
 
 // --- Helper Function ---
-const createOlLayer = (id: string, label: string, url: string, visible: boolean, zIndex: number): LayerState => {
+
+/**
+ * ⭐️ ปรับปรุง: สร้าง LayerState และ olLayer จาก LayerConfig
+ */
+const createOlLayer = (config: LayerConfig, zIndex: number): LayerState => {
   let source: TileSource;
-  if (label === "AIGreen WMS") {
+  let urlString: string;
+
+  if (config.type === "WMS" && typeof config.connection === 'object') {
+    const wmsConfig = config.connection as WMSConnection;
     source = new TileWMS({
-      url: 'https://aigreen.dcce.go.th/geoserver/aigreen/wms',
-      params: { 'LAYERS': 'aigreen:AiGreenDLA,aigreen:Administration', 'TILED': true, 'TRANSPARENT': true, 'FORMAT': 'image/png' },
+      url: wmsConfig.url,
+      params: wmsConfig.params,
       serverType: 'geoserver',
       transition: 0,
     });
+    urlString = wmsConfig.url;
   } else {
-    source = new XYZ({ url: url, maxZoom: 20 });
+    // สมมติว่าเป็น XYZ
+    urlString = config.connection as string;
+    source = new XYZ({ url: urlString, maxZoom: 20 });
   }
+
   const olLayer = new TileLayer({ 
     source: source, 
-    visible: visible, 
+    visible: config.visible, 
     zIndex: zIndex,
     opacity: 1 
   });
-  olLayer.set('id', id); 
-  return { id, label, url, visible, olLayer, opacity: 1 };
+  
+  olLayer.set('id', config.id); 
+  
+  return { 
+    id: config.id, 
+    label: config.label, 
+    url: urlString, // เก็บ URL หลัก
+    visible: config.visible, 
+    olLayer, 
+    opacity: 1 
+  };
 };
 
 const formatNumber = (num: string | number | null | undefined) => {
@@ -171,25 +305,13 @@ const AiSpatialPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // ... (โค้ดโหลด Layer) ...
-    const layerOrder = [
-      "AIGreen WMS", "Field Data 2025 (Styled)", "Field Data 2023 (Styled)", "ESA AGBD 2022",
-      "S2 NDVI Monthly", "S2 Yearly Natural Color", "S1 Bands (Asset)", "SRTMGL1 RSEDTrans",
-      "Zero Areas Mask (Simplified)", "GMap Hybrid",
-    ];
-    const defaultVisibleLayers = new Set([
-      "AIGreen WMS", "Field Data 2025 (Styled)", "ESA AGBD 2022", "GMap Hybrid",
-    ]);
-    const initialLayers = layerOrder
-      .map((label, index) => {
-        const url = geeLayersData[label];
-        if (!url) { console.warn(`ไม่พบ URL สำหรับ Layer: ${label}`); return null; }
-        const id = label.replace(/\s+/g, '-').toLowerCase();
-        const isVisible = defaultVisibleLayers.has(label);
-        const zIndex = layerOrder.length - index; 
-        return createOlLayer(id, label, url, isVisible, zIndex);
-      })
-      .filter((layer): layer is LayerState => layer !== null);
+    // ⭐️ ปรับปรุง: โหลด Layer จาก configLayers
+    const initialLayers = configLayers
+      .map((config, index) => {
+        // zIndex คำนวณจากลำดับใน Array (index 0 อยู่บนสุด = zIndex สูงสุด)
+        const zIndex = configLayers.length - index; 
+        return createOlLayer(config, zIndex);
+      });
     setLayers(initialLayers);
     
     // ... (โค้ดสร้าง Map) ...
@@ -197,8 +319,8 @@ const AiSpatialPage: React.FC = () => {
       controls: defaultControls(), 
       view: new View({ center: fromLonLat([100.5, 13.7]), zoom: 6 }),
       layers: [
-        new TileLayer({ source: new OSM(), zIndex: 0 }),
-        ...initialLayers.map(layer => layer.olLayer)
+        new TileLayer({ source: new OSM(), zIndex: 0 }), // Base map
+        ...initialLayers.map(layer => layer.olLayer) // Add layers from config
       ],
     });
     
@@ -212,7 +334,7 @@ const AiSpatialPage: React.FC = () => {
       olMap.setTarget(undefined);
       setMap(undefined);
     };
-  }, []); 
+  }, []); // Dependencies ว่างเปล่า ถูกต้องแล้ว
 
   useEffect(() => {
     if (isIOS) return; 
@@ -410,6 +532,7 @@ const AiSpatialPage: React.FC = () => {
       const [draggedLayer] = newLayers.splice(dragIndex, 1);
       newLayers.splice(dropIndex, 0, draggedLayer);
       newLayers.forEach((layer, index) => {
+        // อัปเดต zIndex ตามลำดับใหม่
         const zIndex = newLayers.length - index;
         layer.olLayer.setZIndex(zIndex);
       });
@@ -487,15 +610,20 @@ const AiSpatialPage: React.FC = () => {
     let currentMax = 1;
     filteredSummaryData.forEach(record => {
       summaryStackKeys.forEach(key => {
-        const rawValue = record[`${summaryMetric}_${key}`] || 0;
-        const value = parseFloat(String(rawValue).replace(/,/g, ''));
-        if (!isNaN(value) && value > currentMax) {
-          currentMax = value;
+        // คำนวณเฉพาะ Series ที่ "ไม่ถูกซ่อน"
+        if (!hiddenSeries.has(key)) {
+          const rawValue = record[`${summaryMetric}_${key}`] || 0;
+          const value = parseFloat(String(rawValue).replace(/,/g, ''));
+          if (!isNaN(value) && value > currentMax) {
+            currentMax = value;
+          }
         }
       });
     });
-    return currentMax;
-  }, [filteredSummaryData, summaryMetric]);
+    
+    // ปรับปรุง: ถ้าค่า Max เป็น 0 (เช่น ซ่อนหมด) ให้คืนค่า 1 เพื่อป้องกันการหารด้วย 0
+    return currentMax > 0 ? currentMax : 1;
+  }, [filteredSummaryData, summaryMetric, hiddenSeries]); // เพิ่ม hiddenSeries
 
   // useMemo (Sort Data)
   const sortedData = useMemo(() => {
@@ -676,13 +804,14 @@ const AiSpatialPage: React.FC = () => {
                 ) : (
                   // อัปเดต: ใช้ `sortedData`
                   sortedData.map(record => {
-                    // คำนวณ Total ด้วยตนเอง (สำหรับ Title)
+                    // คำนวณ Total ด้วยตนเอง (สำหรับ Title) โดยสนใจเฉพาะ Series ที่ "ไม่ถูกซ่อน"
                     const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
+                       if (hiddenSeries.has(key)) return sum;
                        const rawValue = record[`${summaryMetric}_${key}`] || 0;
                        return sum + parseFloat(String(rawValue).replace(/,/g, ''));
                     }, 0);
                     
-                    const barTitle = `${record[nameKey]} (${record[codeKey]}) \nTotal: ${formatNumber(calculatedTotal)}`;
+                    const barTitle = `${record[nameKey]} (${record[codeKey]}) \nTotal (ที่แสดง): ${formatNumber(calculatedTotal)}`;
                     
                     return (
                       <div 
@@ -705,7 +834,7 @@ const AiSpatialPage: React.FC = () => {
                                 title={segmentTitle}
                                 className="transition-all"
                                 style={{
-                                  height: hiddenSeries.has(key) ? 0 : `${heightPercent}%`,
+                                  height: hiddenSeries.has(key) ? 0 : `${heightPercent}%`, // ซ่อนถ้าถูกเลือก
                                   backgroundColor: seriesConfig[key].color,
                                 }}
                               />
@@ -794,7 +923,7 @@ const AiSpatialPage: React.FC = () => {
                   </th>
                   <th className="px-4 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100" onClick={() => handleSort(`${summaryMetric}_Overall`)}>
                     <div className="flex items-center justify-end space-x-1">
-                      <span>Overall</span>
+<span>Overall</span>
                       <SortIcon forkey={`${summaryMetric}_Overall`} />
                     </div>
                   </th>
