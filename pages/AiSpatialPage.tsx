@@ -68,6 +68,7 @@ const seriesConfig: Record<string, { name: string, color: string }> = {
 };
 const summaryStackKeys = ['P', 'MG', 'MP', 'S', 'E', 'NCO', 'NCM', 'NOO', 'NOM', 'W'];
 
+// ⭐️⭐️⭐️ 1. แก้ไขฟังก์ชันนี้ ⭐️⭐️⭐️
 const createOlLayer = (config: LayerConfig, zIndex: number): LayerState => {
   let source: TileSource;
   let urlString: string;
@@ -86,6 +87,7 @@ const createOlLayer = (config: LayerConfig, zIndex: number): LayerState => {
     source = new XYZ({ 
       url: urlString, 
       maxZoom: 20,
+      crossOrigin: 'anonymous', // ⭐️ เพิ่มบรรทัดนี้
     });
   }
   const olLayer = new TileLayer({ 
@@ -201,9 +203,6 @@ const AiSpatialPage: React.FC = () => {
     });
 
     const olMap = new Map({
-      // ⭐️⭐️⭐️ FIX 1: (Error TS2353) ⭐️⭐️⭐️
-      // ลบ { scaleLine: false } ออก เพราะ TS type definition ไม่รู้จัก
-      // การใช้ extend() จะ override default scale line อยู่แล้ว
       controls: defaultControls().extend([
         scaleLineControl.current
       ]),
@@ -454,18 +453,11 @@ const AiSpatialPage: React.FC = () => {
       
       if (willBePrinting) {
         map.setTarget(printMapTargetRef.current || undefined);
-        
-        // ⭐️⭐️⭐️ FIX 2: (Error TS2345) ⭐️⭐️⭐️
-        // เพิ่ม if check ให้แน่ใจว่า .current ไม่ใช่ null
         if (printLayoutFooterRef.current) {
           scaleLineControl.current.setTarget(printLayoutFooterRef.current);
         }
-
       } else {
         map.setTarget(mapTargetRef.current || undefined);
-        
-        // ⭐️⭐️⭐️ FIX 3: (Error TS2345) ⭐️⭐️⭐️
-        // ใช้ as any เพื่อบอก TS ว่าเรารู้ว่ากำลังทำอะไร
         scaleLineControl.current.setTarget(undefined as any); 
       }
       map.updateSize();
@@ -495,68 +487,88 @@ const AiSpatialPage: React.FC = () => {
     });
   };
 
+  // ⭐️⭐️⭐️ 2. แก้ไขฟังก์ชันนี้ ⭐️⭐️⭐️
   const handlePrintToPDF = async () => {
     if (isPrinting || !printModalRef.current || !map || !scaleLineControl.current) {
       console.warn("Print dependencies not ready. (isPrinting, printModalRef, map, scaleLineControl)");
       return;
     }
-
+  
     setIsPrinting(true);
     const elementToPrint = printModalRef.current;
-
+  
     const screenDpi = 96; 
-    const printScaleFactor = 2; 
+    const printScaleFactor = 2; // เพิ่มความละเอียด
     const printDpi = screenDpi * printScaleFactor; 
-
-    scaleLineControl.current.setDpi(printDpi);
-
+  
+    // ⭐️ 1. ตั้งค่า DPI สำหรับ ScaleLine (ถูกต้อง)
+    if (scaleLineControl.current) {
+      scaleLineControl.current.setDpi(printDpi);
+    }
+  
+    // ⭐️ 2. ลบตรรกะการซ่อน Layer (geeLayersToHide) ออกทั้งหมด
+    //    (การซ่อน Layer คือสาเหตุที่ทำให้แผนที่ว่างเปล่า)
+  
     try {
+      // ⭐️ 3. ใช้ 'rendercomplete' เพื่อรอให้แผนที่วาดเสร็จ
       map.once('rendercomplete', async () => {
         
-        try {
-          const canvas = await html2canvas(elementToPrint, {
-            useCORS: true, 
-            scale: printScaleFactor, 
-            logging: false, 
-            ignoreElements: (element) => element.classList.contains('no-print')
-          });
-          
-          const imgData = canvas.toDataURL('image/png');
-          const imgWidth = canvas.width;
-          const imgHeight = canvas.height;
-          
-          const orientation = imgWidth > imgHeight ? 'l' : 'p';
-          const pdf = new jsPDF({
-            orientation: orientation,
-            unit: 'px',
-            format: [imgWidth, imgHeight] 
-          });
-
-          pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-          pdf.save('aigreen-map.pdf');
-
-        } catch (innerError) {
-          console.error("เกิดข้อผิดพลาดในการสร้าง PDF (inner - html2canvas):", innerError);
-          alert("ไม่สามารถสร้าง PDF ได้ (inner) กรุณาลองใหม่อีกครั้ง");
-        } finally {
-          if (scaleLineControl.current) {
-            scaleLineControl.current.setDpi(undefined); 
+        // ⭐️ 4. หน่วงเวลาเล็กน้อย (500ms) เพื่อให้ GEE tiles โหลดทัน
+        //    (โค้ดเดิมของผู้ใช้ส่วนนี้ดีอยู่แล้ว)
+        setTimeout(async () => {
+          try {
+            const canvas = await html2canvas(elementToPrint, {
+              useCORS: true,      // ⭐️ ถูกต้อง
+              scale: printScaleFactor, // ⭐️ ใช้ค่า scale ที่ตั้งไว้
+              logging: false, 
+              // ⭐️ 5. เพิ่ม allowTaint เพื่อช่วยในการจับภาพข้ามโดเมน
+              //    (จำเป็นเมื่อใช้ useCORS กับบาง Server)
+              allowTaint: true, 
+              ignoreElements: (element) => element.classList.contains('no-print')
+            });
+            
+            const imgData = canvas.toDataURL('image/png');
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+            
+            const orientation = imgWidth > imgHeight ? 'l' : 'p';
+            const pdf = new jsPDF({
+              orientation: orientation,
+              unit: 'px',
+              format: [imgWidth, imgHeight] 
+            });
+  
+            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+            pdf.save('aigreen-map.pdf');
+  
+          } catch (innerError) {
+            console.error("เกิดข้อผิดพลาดในการสร้าง PDF (inner - html2canvas):", innerError);
+            alert("ไม่สามารถสร้าง PDF ได้ (inner) กรุณาลองใหม่อีกครั้ง");
+          } finally {
+            // ⭐️ 6. คืนค่า DPI และสถานะ (ลบโค้ดคืนค่า Layer ที่ถูกซ่อน)
+            if (scaleLineControl.current) {
+              scaleLineControl.current.setDpi(undefined); 
+            }
+            setIsPrinting(false);
           }
-          setIsPrinting(false);
-        }
+        }, 500); // ⭐️ หมายเหตุ: หาก GEE โหลดช้า อาจต้องเพิ่มเวลานี้ (เช่น 1000)
+
       });
-
+  
+      // ⭐️ 7. สั่ง render แผนที่ใหม่ (ถูกต้อง)
       map.render();
-
+  
     } catch (outerError) {
       console.error("เกิดข้อผิดพลาดในการสั่ง render (outer):", outerError);
       
+      // ⭐️ 8. คืนค่าในกรณีเกิด Error (ลบโค้ดคืนค่า Layer)
       if (scaleLineControl.current) {
         scaleLineControl.current.setDpi(undefined);
       }
       setIsPrinting(false);
     }
   };
+  // ⭐️⭐️⭐️ END: แก้ไขฟังก์ชันนี้ ⭐️⭐️⭐️
 
   const { codeKey, nameKey, levelName } = useMemo(() => {
     if (summaryLevel === 'tambon') {
@@ -700,7 +712,6 @@ const AiSpatialPage: React.FC = () => {
             className={`bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 ${isPrintLayout ? 'hidden' : ''}`}
             title={isFullscreen ? "ออกจากโหมดเต็มจอ" : "แสดงผลเต็มจอ"}
           >
-            {/* ⭐️⭐️⭐️ FIX: (Typo Error) แก้ไข 2Opening เป็น 24 ⭐️⭐️⭐️ */}
             {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
           </button>
 
@@ -920,8 +931,8 @@ const AiSpatialPage: React.FC = () => {
                   </th>
                   <th className="px-4 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100" onClick={() => handleSort(`${summaryMetric}_Overall`)}>
                     <div className="flex items-center justify-end space-x-1">
-                      <span>Overall</span>
-                      <SortIcon forkey={`${summaryMetric}_Overall`} />
+						<span>Overall</span>
+						<SortIcon forkey={`${summaryMetric}_Overall`} />
                     </div>
                   </th>
                 </tr>
@@ -1033,7 +1044,7 @@ const AiSpatialPage: React.FC = () => {
                   <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
                     <div className="space-y-3">
                       <div className="flex items-center">
-                        <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
+                        <label className="w-1.4 text-sm font-semibold text-slate-700">จังหวัด</label>
                         <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300" value={selectedProv} onChange={handleProvinceChange}>
                           <option value="all">ทุกจังหวัด</option>
                           {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
