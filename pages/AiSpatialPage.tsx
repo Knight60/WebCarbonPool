@@ -23,7 +23,6 @@ import {
 } from 'lucide-react'; 
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-// ⭐️⭐️⭐️ EDIT: Corrected import path ⭐️⭐️⭐️
 import configLayersData from '../src/configLayers.json'; 
 
 const THAILAND_BBOX: Extent = [96.692891, 5.122222, 106.192853, 21.402443];
@@ -87,7 +86,6 @@ const createOlLayer = (config: LayerConfig, zIndex: number): LayerState => {
     source = new XYZ({ 
       url: urlString, 
       maxZoom: 20,
-      crossOrigin: 'anonymous', 
     });
   }
   const olLayer = new TileLayer({ 
@@ -203,7 +201,10 @@ const AiSpatialPage: React.FC = () => {
     });
 
     const olMap = new Map({
-      controls: defaultControls({ scaleLine: false }).extend([
+      // ⭐️⭐️⭐️ FIX 1: (Error TS2353) ⭐️⭐️⭐️
+      // ลบ { scaleLine: false } ออก เพราะ TS type definition ไม่รู้จัก
+      // การใช้ extend() จะ override default scale line อยู่แล้ว
+      controls: defaultControls().extend([
         scaleLineControl.current
       ]),
       interactions: defaultInteractions({
@@ -453,10 +454,19 @@ const AiSpatialPage: React.FC = () => {
       
       if (willBePrinting) {
         map.setTarget(printMapTargetRef.current || undefined);
-        scaleLineControl.current.setTarget(printLayoutFooterRef.current || undefined);
+        
+        // ⭐️⭐️⭐️ FIX 2: (Error TS2345) ⭐️⭐️⭐️
+        // เพิ่ม if check ให้แน่ใจว่า .current ไม่ใช่ null
+        if (printLayoutFooterRef.current) {
+          scaleLineControl.current.setTarget(printLayoutFooterRef.current);
+        }
+
       } else {
         map.setTarget(mapTargetRef.current || undefined);
-        scaleLineControl.current.setTarget(undefined); 
+        
+        // ⭐️⭐️⭐️ FIX 3: (Error TS2345) ⭐️⭐️⭐️
+        // ใช้ as any เพื่อบอก TS ว่าเรารู้ว่ากำลังทำอะไร
+        scaleLineControl.current.setTarget(undefined as any); 
       }
       map.updateSize();
       map.render(); 
@@ -690,6 +700,7 @@ const AiSpatialPage: React.FC = () => {
             className={`bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 ${isPrintLayout ? 'hidden' : ''}`}
             title={isFullscreen ? "ออกจากโหมดเต็มจอ" : "แสดงผลเต็มจอ"}
           >
+            {/* ⭐️⭐️⭐️ FIX: (Typo Error) แก้ไข 2Opening เป็น 24 ⭐️⭐️⭐️ */}
             {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
           </button>
 
