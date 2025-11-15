@@ -23,6 +23,8 @@ import {
 } from 'lucide-react'; 
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+// ⭐️⭐️⭐️ EDIT: Corrected import path ⭐️⭐️⭐️
+import configLayersData from '../src/configLayers.json'; 
 
 const THAILAND_BBOX: Extent = [96.692891, 5.122222, 106.192853, 21.402443];
 
@@ -52,91 +54,7 @@ interface LayerConfig {
   visible: boolean;
   symbol: string | null;
 }
-const configLayers: LayerConfig[] = [
-  {
-    id: "aigreen-wms",
-    label: "ขอบเขตการปกครอง",
-    type: "WMS",
-    connection: {
-      url: 'https://aigreen.dcce.go.th/geoserver/aigreen/wms',
-      params: { 'LAYERS': 'aigreen:AiGreenDLA,aigreen:Administration', 'TILED': true, 'TRANSPARENT': true, 'FORMAT': 'image/png' },
-    },
-    visible: true,
-    symbol: null,
-  },
-  {
-    id: "field-data-2025-styled",
-    label: "ต้นไม้ในแปลงถาวรปี 2025",
-    type: "XYZ",
-    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/a13d346533bc3916bb4c7019e0489b3c-c7995220c0db1d6180d96150b13b5b4d/tiles/{z}/{x}/{y}",
-    visible: true,
-    symbol: null,
-  },
-  {
-    id: "field-data-2023-styled",
-    label: "ต้นไม้ในแปลงถาวรปี 2023",
-    type: "XYZ",
-    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/5fbe6fbbe80e59cdaf0eaa617c40b637-ff9d3eb67c344c4512e16b16c8214983/tiles/{z}/{x}/{y}",
-    visible: false,
-    symbol: null,
-  },
-  {
-    id: "esa-agbd-2022",
-    label: "ESA AGBD 2022",
-    type: "XYZ",
-    connection: "https://earthengine.googleapis.com/v1/projects/pisut-earthengine/maps/e32614cbeda6fd5d675f7203a5520e1b-1a6ae08bdee3f8f358006d84bf3a407b/tiles/{z}/{x}/{y}",
-    visible: true,
-    symbol: null,
-  },
-  {
-    id: "green-area-type",
-    label: "ประเภทพื้นที่สีเขียว",
-    type: "WMS",
-    connection: {
-      url: 'https://aigreen.dcce.go.th/geoserver/aigreen/wms',
-      params: { 
-        'LAYERS': 'aigreen:AiGreenTypesTIF',
-        'TILED': true, 
-        'TRANSPARENT': true, 
-        'FORMAT': 'image/png' 
-      },
-    },
-    visible: false,
-    symbol: null,
-  },
-  {
-    id: "s2-ndvi-monthly",
-    label: "S2 NDVI เฉลี่ยรายเดือน ปี 2024",
-    type: "XYZ",
-    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/f63f56cc4995333132eaa4a87f7b7b7b-70328d02c5285b7e396252c02fa6f918/tiles/{z}/{x}/{y}",
-    visible: false,
-    symbol: null,
-  },
-  {
-    id: "s2-yearly-natural-color",
-    label: "S2 5Bands เฉลี่ยรายปี 2024",
-    type: "XYZ",
-    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/eae2603d5c456ef7602b5a7f4c8e4fc2-6422288101c351ff0de1aebecacb950b/tiles/{z}/{x}/{y}",
-    visible: false,
-    symbol: null,
-  },
-  {
-    id: "s1-bands-(asset)",
-    label: "S1 (VV,VH,VVdVH) เฉลี่ยรายปี 2024",
-    type: "XYZ",
-    connection: "https://earthengine-highvolume.googleapis.com/v1/projects/envimodeling/maps/9294a067ea586f65345ed09bcd903f0e-ef1b82a160421bd21b93b189f7399bb0/tiles/{z}/{x}/{y}",
-    visible: false,
-    symbol: null,
-  },
-  {
-    id: "srtmgl1-rsedtrans",
-    label: "ความสูงเชิงเลข SRTM GL1",
-    type: "XYZ",
-    connection: "https://earthengine.googleapis.com/v1/projects/envimodeling/maps/7b5d79a905893ec6dedf3b010c454b9f-9d944be6749f89e5bbb006a727d03a0a/tiles/{z}/{x}/{y}",
-    visible: false,
-    symbol: null,
-  },
-];
+
 const seriesConfig: Record<string, { name: string, color: string }> = {
   'P': { name: 'สวนสาธารณะ', color: '#FF7F7F' },
   'MG': { name: 'สถานที่ราชการ', color: '#007086' },
@@ -210,7 +128,6 @@ const getValueForSort = (record: SummaryRecord, key: string): string | number | 
 const AiSpatialPage: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapTargetRef = useRef<HTMLDivElement>(null);
-  const scaleLineTargetRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<Map | undefined>();
   const [layers, setLayers] = useState<LayerState[]>([]);
   const draggedItemIndex = useRef<number | null>(null);
@@ -270,9 +187,9 @@ const AiSpatialPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const initialLayers = configLayers
+    const initialLayers = (configLayersData as LayerConfig[])
       .map((config, index) => {
-        const zIndex = configLayers.length - index; 
+        const zIndex = configLayersData.length - index; 
         return createOlLayer(config, zIndex);
       });
     setLayers(initialLayers);
@@ -283,11 +200,11 @@ const AiSpatialPage: React.FC = () => {
       steps: 4,      
       text: true,      
       minWidth: 140,   
-      className: 'ol-scale-line th-font' 
     });
 
     const olMap = new Map({
-      controls: defaultControls().extend([
+      controls: defaultControls({ scaleLine: false }).extend([
+        scaleLineControl.current
       ]),
       interactions: defaultInteractions({
         altShiftDragRotate: false
@@ -306,15 +223,14 @@ const AiSpatialPage: React.FC = () => {
     
     if (mapTargetRef.current) { olMap.setTarget(mapTargetRef.current); }
 
-    if (scaleLineTargetRef.current) {
-      scaleLineControl.current.setTarget(scaleLineTargetRef.current);
-    }
-
     setMap(olMap);
     
     zoomToExtent(olMap, THAILAND_BBOX);
 
     return () => { 
+      if (scaleLineControl.current) {
+        olMap.removeControl(scaleLineControl.current);
+      }
       olMap.setTarget(undefined);
       setMap(undefined);
     };
@@ -540,10 +456,10 @@ const AiSpatialPage: React.FC = () => {
         scaleLineControl.current.setTarget(printLayoutFooterRef.current || undefined);
       } else {
         map.setTarget(mapTargetRef.current || undefined);
-        scaleLineControl.current.setTarget(scaleLineTargetRef.current || undefined);
+        scaleLineControl.current.setTarget(undefined); 
       }
       map.updateSize();
-      map.render(); // ⭐️ นี่คือจุดแก้ไขที่ 1 (PDF Fix) ⭐️
+      map.render(); 
     }, 150); 
   };
 
@@ -570,22 +486,27 @@ const AiSpatialPage: React.FC = () => {
   };
 
   const handlePrintToPDF = async () => {
-    if (isPrinting || !printModalRef.current || !map) {
-      console.warn("Print dependencies not ready. (isPrinting, printModalRef, map)");
+    if (isPrinting || !printModalRef.current || !map || !scaleLineControl.current) {
+      console.warn("Print dependencies not ready. (isPrinting, printModalRef, map, scaleLineControl)");
       return;
     }
 
     setIsPrinting(true);
     const elementToPrint = printModalRef.current;
 
+    const screenDpi = 96; 
+    const printScaleFactor = 2; 
+    const printDpi = screenDpi * printScaleFactor; 
+
+    scaleLineControl.current.setDpi(printDpi);
+
     try {
       map.once('rendercomplete', async () => {
         
-        // ⭐️ นี่คือจุดแก้ไขที่ 2 (PDF Fix - ลบ setTimeout ออก) ⭐️
         try {
           const canvas = await html2canvas(elementToPrint, {
             useCORS: true, 
-            scale: 2, 
+            scale: printScaleFactor, 
             logging: false, 
             ignoreElements: (element) => element.classList.contains('no-print')
           });
@@ -608,15 +529,21 @@ const AiSpatialPage: React.FC = () => {
           console.error("เกิดข้อผิดพลาดในการสร้าง PDF (inner - html2canvas):", innerError);
           alert("ไม่สามารถสร้าง PDF ได้ (inner) กรุณาลองใหม่อีกครั้ง");
         } finally {
+          if (scaleLineControl.current) {
+            scaleLineControl.current.setDpi(undefined); 
+          }
           setIsPrinting(false);
         }
-        // ⭐️ สิ้นสุดจุดแก้ไขที่ 2 ⭐️
       });
 
       map.render();
 
     } catch (outerError) {
       console.error("เกิดข้อผิดพลาดในการสั่ง render (outer):", outerError);
+      
+      if (scaleLineControl.current) {
+        scaleLineControl.current.setDpi(undefined);
+      }
       setIsPrinting(false);
     }
   };
@@ -710,6 +637,29 @@ const AiSpatialPage: React.FC = () => {
 
   return (
     <> 
+      <style>{`
+        .ol-scale-bar { 
+          left: 35px !important; 
+          bottom: 4px !important;
+          background: rgba(255, 255, 255, 0.5);
+          backdrop-filter: blur(2px);
+          padding: 2px 5px;
+          border-radius: 4px;
+          min-height: 1em; 
+          font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+          font-size: 10px;
+          line-height: 1.2; 
+        }
+        .ol-scale-bar-inner {
+          display: none !important;
+        }
+        .ol-scale-text {
+           position: static !important; 
+           text-align: center;
+           margin: 0;
+        }
+      `}</style>
+
       <div className={`space-y-6 th-font ${isFullscreen || isPrintLayout ? 'hidden' : 'space-y-6'}`}>
         <div className="text-center">
           <h1 className="text-3xl font-bold text-slate-800">AI Spatial Analysis</h1>
@@ -751,8 +701,6 @@ const AiSpatialPage: React.FC = () => {
             {isPrintLayout ? <X size={24} /> : <PrinterIcon size={24} />}
           </button>
         </div>
-        
-        {/* ⭐️ นี่คือจุดแก้ไข (Fullscreen Fix) - ลบ div ที่ซ่อนเนื้อหาตอน Fullscreen ออก ⭐️ */}
         
         <div className="absolute top-2 left-2 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-20">
           <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => setIsLayerListVisible(prev => !prev)}>
@@ -801,11 +749,6 @@ const AiSpatialPage: React.FC = () => {
           <BarChart3 size={24} />
         </button>
 
-        <div 
-          ref={scaleLineTargetRef} 
-          className="absolute bottom-2 left-20 z-20" 
-        />
-        
         {isBottomPanelVisible && (
           <div className="absolute bottom-14 left-4 right-4 z-20 flex h-44 space-x-2 th-font">
             <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
@@ -901,7 +844,6 @@ const AiSpatialPage: React.FC = () => {
             </div>
           </div>
         )} 
-        {/* ⭐️ นี่คือจุดแก้ไข (Fullscreen Fix) - ลบ div ปิด ที่ซ่อนเนื้อหาตอน Fullscreen ออก ⭐️ */}
       </div>
 
       <div className={`p-4 bg-white rounded-xl shadow-sm th-font mt-6 ${isFullscreen || isPrintLayout ? 'hidden' : ''}`}>
@@ -1103,7 +1045,6 @@ const AiSpatialPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex-shrink-0 w-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg h-full overflow-y-auto space-y-1">
-                    {/* ⭐️ นี่คือจุดที่แก้ไข เอา `}` ที่เกินมาออก ⭐️ */}
                     {Object.entries(seriesConfig).map(([key, { name, color }]) => (
                       <div
                         key={key}

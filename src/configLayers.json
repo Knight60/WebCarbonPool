@@ -1,0 +1,85 @@
+[
+  {
+    "id": "aigreen-wms",
+    "label": "ขอบเขตการปกครอง",
+    "type": "WMS",
+    "connection": {
+      "url": "https://aigreen.dcce.go.th/geoserver/aigreen/wms",
+      "params": { "LAYERS": "aigreen:AiGreenDLA,aigreen:Administration", "TILED": true, "TRANSPARENT": true, "FORMAT": "image/png" }
+    },
+    "visible": true,
+    "symbol": null
+  },
+  {
+    "id": "field-data-2025-styled",
+    "label": "ต้นไม้ในแปลงถาวรปี 2025",
+    "type": "XYZ",
+    "connection": "https://earthengine.googleapis.com/v1/projects/envimodeling/maps/a13d346533bc3916bb4c7019e0489b3c-be3f2b3bde98da766147f7f053892066/tiles/{z}/{x}/{y}",
+    "visible": true,
+    "symbol": null
+  },
+  {
+    "id": "field-data-2023-styled",
+    "label": "ต้นไม้ในแปลงถาวรปี 2023",
+    "type": "XYZ",
+    "connection": "https://earthengine.googleapis.com/v1/projects/envimodeling/maps/5fbe6fbbe80e59cdaf0eaa617c40b637-bfe3278b8b6d08f82c0f9c63ff07388d/tiles/{z}/{x}/{y}",
+    "visible": false,
+    "symbol": null
+  },
+  {
+    "id": "esa-agbd-2022",
+    "label": "ESA AGBD 2022",
+    "type": "XYZ",
+    "connection": "https://earthengine.googleapis.com/v1/projects/envimodeling/maps/0adb900e0f5a33f93f8b27533db3be3d-4ef4724da87d022c8e478b80ad996681/tiles/{z}/{x}/{y}",
+    "visible": true,
+    "symbol": null
+  },
+  {
+    "id": "green-area-type",
+    "label": "ประเภทพื้นที่สีเขียว",
+    "type": "WMS",
+    "connection": {
+      "url": "https://aigreen.dcce.go.th/geoserver/aigreen/wms",
+      "params": { 
+        "LAYERS": "aigreen:AiGreenTypesTIF",
+        "TILED": true, 
+        "TRANSPARENT": true, 
+        "FORMAT": "image/png" 
+      }
+    },
+    "visible": false,
+    "symbol": null
+  },
+  {
+    "id": "s2-ndvi-monthly",
+    "label": "S2 NDVI เฉลี่ยรายเดือน ปี 2024",
+    "type": "XYZ",
+    "connection": "https://earthengine.googleapis.com/v1/projects/envimodeling/maps/f63f56cc4995333132eaa4a87f7b7b7b-fa68b0a8c1c5aeeb8bae55d9ffdc286e/tiles/{z}/{x}/{y}",
+    "visible": false,
+    "symbol": null
+  },
+  {
+    "id": "s2-yearly-natural-color",
+    "label": "S2 5Bands เฉลี่ยรายปี 2024",
+    "type": "XYZ",
+    "connection": "https://earthengine.googleapis.com/v1/projects/envimodeling/maps/eae2603d5c456ef7602b5a7f4c8e4fc2-64640e5642ff6a46bf9ab8dfcbba638b/tiles/{z}/{x}/{y}",
+    "visible": false,
+    "symbol": null
+  },
+  {
+    "id": "s1-bands-(asset)",
+    "label": "S1 (VV,VH,VVdVH) เฉลี่ยรายปี 2024",
+    "type": "XYZ",
+    "connection": "https://earthengine.googleapis.com/v1/projects/envimodeling/maps/9294a067ea586f65345ed09bcd903f0e-59931657e3f1912b88dad3afa8235797/tiles/{z}/{x}/{y}",
+    "visible": false,
+    "symbol": null
+  },
+  {
+    "id": "srtmgl1-rsedtrans",
+    "label": "ความสูงเชิงเลข SRTM GL1",
+    "type": "XYZ",
+    "connection": "https://earthengine.googleapis.com/v1/projects/envimodeling/maps/7b5d79a905893ec6dedf3b010c454b9f-b9b672e4c237b3b0f55cdbea0965c967/tiles/{z}/{x}/{y}",
+    "visible": false,
+    "symbol": null
+  }
+]
