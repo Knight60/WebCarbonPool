@@ -19,13 +19,16 @@ import {
   X,
   ArrowRightLeft,
   PrinterIcon,
-  BarChart3
+  BarChart3,
+  RefreshCcw
 } from 'lucide-react'; 
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import configLayersData from '../src/configLayers.json'; 
 
 const THAILAND_BBOX: Extent = [96.692891, 5.122222, 106.192853, 21.402443];
+
+// ... (โค้ดส่วน Interface, Config, Functions ไม่มีการเปลี่ยนแปลง) ...
 
 interface LayerState {
   id: string;
@@ -68,7 +71,6 @@ const seriesConfig: Record<string, { name: string, color: string }> = {
 };
 const summaryStackKeys = ['P', 'MG', 'MP', 'S', 'E', 'NCO', 'NCM', 'NOO', 'NOM', 'W'];
 
-// ⭐️⭐️⭐️ 1. แก้ไขฟังก์ชันนี้ ⭐️⭐️⭐️
 const createOlLayer = (config: LayerConfig, zIndex: number): LayerState => {
   let source: TileSource;
   let urlString: string;
@@ -87,7 +89,7 @@ const createOlLayer = (config: LayerConfig, zIndex: number): LayerState => {
     source = new XYZ({ 
       url: urlString, 
       maxZoom: 20,
-      crossOrigin: 'anonymous', // ⭐️ เพิ่มบรรทัดนี้
+      crossOrigin: 'anonymous',
     });
   }
   const olLayer = new TileLayer({ 
@@ -124,6 +126,7 @@ const getValueForSort = (record: SummaryRecord, key: string): string | number | 
   }
   return String(val);
 };
+
 
 const AiSpatialPage: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -163,6 +166,9 @@ const AiSpatialPage: React.FC = () => {
 
   const printModalRef = useRef<HTMLDivElement>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isPrintLandscape, setIsPrintLandscape] = useState(false); 
+
+  // ... (โค้ดส่วน useEffects, Handlers ไม่มีการเปลี่ยนแปลง) ...
 
   const toggleSeries = (key: string) => {
     setHiddenSeries(prev => {
@@ -242,8 +248,8 @@ const AiSpatialPage: React.FC = () => {
       const vh = window.innerHeight * 0.9;
       const a4LandscapeRatio = 1.414;
       const a4PortraitRatio = 1 / a4LandscapeRatio;
-      const isLandscape = window.innerWidth > window.innerHeight;
-      if (isLandscape) {
+      
+      if (isPrintLandscape) {
         const width = Math.min(vw, vh * a4LandscapeRatio);
         const height = width / a4LandscapeRatio;
         setPaperSize({ width: `${width}px`, height: `${height}px`, isLandscape: true });
@@ -253,6 +259,7 @@ const AiSpatialPage: React.FC = () => {
         setPaperSize({ width: `${width}px`, height: `${height}px`, isLandscape: false });
       }
     };
+    
     if (isPrintLayout) {
       calculatePaperSize();
       window.addEventListener('resize', calculatePaperSize);
@@ -260,7 +267,7 @@ const AiSpatialPage: React.FC = () => {
     return () => {
       window.removeEventListener('resize', calculatePaperSize);
     };
-  }, [isPrintLayout]);
+  }, [isPrintLayout, isPrintLandscape]);
 
 
   const fetchLocations = async (url: string, valueKey: string, textKey: string): Promise<LocationOption[]> => {
@@ -487,7 +494,6 @@ const AiSpatialPage: React.FC = () => {
     });
   };
 
-  // ⭐️⭐️⭐️ 2. แก้ไขฟังก์ชันนี้ ⭐️⭐️⭐️
   const handlePrintToPDF = async () => {
     if (isPrinting || !printModalRef.current || !map || !scaleLineControl.current) {
       console.warn("Print dependencies not ready. (isPrinting, printModalRef, map, scaleLineControl)");
@@ -498,31 +504,22 @@ const AiSpatialPage: React.FC = () => {
     const elementToPrint = printModalRef.current;
   
     const screenDpi = 96; 
-    const printScaleFactor = 2; // เพิ่มความละเอียด
+    const printScaleFactor = 2; 
     const printDpi = screenDpi * printScaleFactor; 
   
-    // ⭐️ 1. ตั้งค่า DPI สำหรับ ScaleLine (ถูกต้อง)
     if (scaleLineControl.current) {
       scaleLineControl.current.setDpi(printDpi);
     }
   
-    // ⭐️ 2. ลบตรรกะการซ่อน Layer (geeLayersToHide) ออกทั้งหมด
-    //    (การซ่อน Layer คือสาเหตุที่ทำให้แผนที่ว่างเปล่า)
-  
     try {
-      // ⭐️ 3. ใช้ 'rendercomplete' เพื่อรอให้แผนที่วาดเสร็จ
       map.once('rendercomplete', async () => {
         
-        // ⭐️ 4. หน่วงเวลาเล็กน้อย (500ms) เพื่อให้ GEE tiles โหลดทัน
-        //    (โค้ดเดิมของผู้ใช้ส่วนนี้ดีอยู่แล้ว)
         setTimeout(async () => {
           try {
             const canvas = await html2canvas(elementToPrint, {
-              useCORS: true,      // ⭐️ ถูกต้อง
-              scale: printScaleFactor, // ⭐️ ใช้ค่า scale ที่ตั้งไว้
+              useCORS: true,      
+              scale: printScaleFactor, 
               logging: false, 
-              // ⭐️ 5. เพิ่ม allowTaint เพื่อช่วยในการจับภาพข้ามโดเมน
-              //    (จำเป็นเมื่อใช้ useCORS กับบาง Server)
               allowTaint: true, 
               ignoreElements: (element) => element.classList.contains('no-print')
             });
@@ -545,30 +542,26 @@ const AiSpatialPage: React.FC = () => {
             console.error("เกิดข้อผิดพลาดในการสร้าง PDF (inner - html2canvas):", innerError);
             alert("ไม่สามารถสร้าง PDF ได้ (inner) กรุณาลองใหม่อีกครั้ง");
           } finally {
-            // ⭐️ 6. คืนค่า DPI และสถานะ (ลบโค้ดคืนค่า Layer ที่ถูกซ่อน)
             if (scaleLineControl.current) {
               scaleLineControl.current.setDpi(undefined); 
             }
             setIsPrinting(false);
           }
-        }, 500); // ⭐️ หมายเหตุ: หาก GEE โหลดช้า อาจต้องเพิ่มเวลานี้ (เช่น 1000)
+        }, 500); 
 
       });
   
-      // ⭐️ 7. สั่ง render แผนที่ใหม่ (ถูกต้อง)
       map.render();
   
     } catch (outerError) {
       console.error("เกิดข้อผิดพลาดในการสั่ง render (outer):", outerError);
       
-      // ⭐️ 8. คืนค่าในกรณีเกิด Error (ลบโค้ดคืนค่า Layer)
       if (scaleLineControl.current) {
         scaleLineControl.current.setDpi(undefined);
       }
       setIsPrinting(false);
     }
   };
-  // ⭐️⭐️⭐️ END: แก้ไขฟังก์ชันนี้ ⭐️⭐️⭐️
 
   const { codeKey, nameKey, levelName } = useMemo(() => {
     if (summaryLevel === 'tambon') {
@@ -659,6 +652,7 @@ const AiSpatialPage: React.FC = () => {
 
   return (
     <> 
+      {/* ⭐️⭐️⭐️ แก้ไข STYLE ⭐️⭐️⭐️ */}
       <style>{`
         .ol-scale-bar { 
           left: 35px !important; 
@@ -680,7 +674,26 @@ const AiSpatialPage: React.FC = () => {
            text-align: center;
            margin: 0;
         }
+
+        .print-bottom-panel {
+          /* ⭐️ ปรับจาก 10px เป็น 12.5px ⭐️ */
+          font-size: 12.5px !important; 
+          line-height: 1.4 !important;
+        }
+        
+        .print-bottom-panel label,
+        .print-bottom-panel select,
+        .print-bottom-panel span,
+        .print-bottom-panel div {
+          font-size: inherit !important;
+        }
+
+        .print-bottom-panel select {
+          padding-top: 2px !important;
+          padding-bottom: 2px !important;
+        }
       `}</style>
+      {/* ⭐️⭐️⭐️ END ⭐️⭐️⭐️ */}
 
       <div className={`space-y-6 th-font ${isFullscreen || isPrintLayout ? 'hidden' : 'space-y-6'}`}>
         <div className="text-center">
@@ -931,8 +944,8 @@ const AiSpatialPage: React.FC = () => {
                   </th>
                   <th className="px-4 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100" onClick={() => handleSort(`${summaryMetric}_Overall`)}>
                     <div className="flex items-center justify-end space-x-1">
-						<span>Overall</span>
-						<SortIcon forkey={`${summaryMetric}_Overall`} />
+                      <span>Overall</span>
+                      <SortIcon forkey={`${summaryMetric}_Overall`} />
                     </div>
                   </th>
                 </tr>
@@ -979,6 +992,14 @@ const AiSpatialPage: React.FC = () => {
               ) : (
                 <PrinterIcon size={18} />
               )}
+            </button>
+            
+            <button 
+              onClick={() => setIsPrintLandscape(prev => !prev)}
+              className="absolute top-16 -right-3 z-50 bg-blue-600 text-white rounded-full p-1.5 shadow-lg hover:bg-blue-700 no-print"
+              title={isPrintLandscape ? "สลับเป็นแนวตั้ง" : "สลับเป็นแนวนอน"}
+            >
+              <RefreshCcw size={18} />
             </button>
             
             <button 
@@ -1040,7 +1061,7 @@ const AiSpatialPage: React.FC = () => {
               </button>
 
               {isBottomPanelVisible && (
-                <div className="absolute bottom-10 left-4 right-4 z-10 flex h-44 space-x-2">
+                <div className="absolute bottom-10 left-4 right-4 z-10 flex h-44 space-x-2 print-bottom-panel">
                   <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
                     <div className="space-y-3">
                       <div className="flex items-center">
