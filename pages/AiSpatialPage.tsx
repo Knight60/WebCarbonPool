@@ -24,9 +24,8 @@ import {
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-// (ส่วน Config ทั้งหมด, Interfaces, และ Functions ด้านบนคงไว้เหมือนเดิม)
 const THAILAND_BBOX: Extent = [96.692891, 5.122222, 106.192853, 21.402443];
-// ... (Interface, Configs ทั้งหมดคงเดิม) ...
+
 interface LayerState {
   id: string;
   label: string;
@@ -152,7 +151,6 @@ const seriesConfig: Record<string, { name: string, color: string }> = {
 };
 const summaryStackKeys = ['P', 'MG', 'MP', 'S', 'E', 'NCO', 'NCM', 'NOO', 'NOM', 'W'];
 
-// ⭐️ 1. (แก้ไข) เพิ่ม crossOrigin ในฟังก์ชัน createOlLayer
 const createOlLayer = (config: LayerConfig, zIndex: number): LayerState => {
   let source: TileSource;
   let urlString: string;
@@ -163,7 +161,7 @@ const createOlLayer = (config: LayerConfig, zIndex: number): LayerState => {
       params: wmsConfig.params,
       serverType: 'geoserver',
       transition: 0,
-      crossOrigin: 'anonymous', // ⭐️ นี่คือจุดแก้ไขที่ 1
+      crossOrigin: 'anonymous', 
     });
     urlString = wmsConfig.url;
   } else {
@@ -171,7 +169,7 @@ const createOlLayer = (config: LayerConfig, zIndex: number): LayerState => {
     source = new XYZ({ 
       url: urlString, 
       maxZoom: 20,
-      crossOrigin: 'anonymous', // ⭐️ นี่คือจุดแก้ไขที่ 2
+      crossOrigin: 'anonymous', 
     });
   }
   const olLayer = new TileLayer({ 
@@ -298,9 +296,8 @@ const AiSpatialPage: React.FC = () => {
       ]),
       view: new View({ center: fromLonLat([100.5, 13.7]), zoom: 6 }),
       layers: [
-        // ⭐️ 3. (แก้ไข) เพิ่ม crossOrigin ที่ Base Map (OSM)
         new TileLayer({ 
-          source: new OSM({ crossOrigin: 'anonymous' }), // ⭐️ นี่คือจุดแก้ไขที่ 3
+          source: new OSM({ crossOrigin: 'anonymous' }), 
           zIndex: 0 
         }),
         ...initialLayers.map(layer => layer.olLayer)
@@ -581,14 +578,12 @@ const AiSpatialPage: React.FC = () => {
     const elementToPrint = printModalRef.current;
 
     try {
-      // รอให้ map render เสร็จก่อน
       map.once('rendercomplete', async () => {
         
-        // (สำคัญ) รออีก 500ms หลังจาก 'rendercomplete' 
         setTimeout(async () => {
           try {
             const canvas = await html2canvas(elementToPrint, {
-              useCORS: true, // ⭐️ นี่คือตัวบอก html2canvas ให้ร้องขอแบบ CORS
+              useCORS: true, 
               scale: 2, 
               logging: false, 
             });
@@ -613,10 +608,9 @@ const AiSpatialPage: React.FC = () => {
           } finally {
             setIsPrinting(false);
           }
-        }, 500); // ⭐️ หน่วงเวลา 500ms ให้เบราว์เซอร์วาด Tile
+        }, 500); 
       });
 
-      // สั่งให้ map render ใหม่ (ซึ่งจะ trigger 'rendercomplete' ด้านบน)
       map.render();
 
     } catch (outerError) {
@@ -714,7 +708,6 @@ const AiSpatialPage: React.FC = () => {
 
   return (
     <> 
-      {/* ... (ส่วน JSX ที่ไม่เปลี่ยนแปลง คงเดิม) ... */}
       <div className={`space-y-6 th-font ${isFullscreen || isPrintLayout ? 'hidden' : 'space-y-6'}`}>
         <div className="text-center">
           <h1 className="text-3xl font-bold text-slate-800">AI Spatial Analysis</h1>
@@ -812,7 +805,6 @@ const AiSpatialPage: React.FC = () => {
           
           {isBottomPanelVisible && (
             <div className="absolute bottom-14 left-4 right-4 z-20 flex h-44 space-x-2 th-font">
-              {/* ... (เนื้อหา Bottom Panel: Filters, Legend, Chart) ... */}
               <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
                 <div className="space-y-3">
                   <div className="flex items-center">
@@ -910,7 +902,6 @@ const AiSpatialPage: React.FC = () => {
       </div>
 
       <div className={`p-4 bg-white rounded-xl shadow-sm th-font mt-6 ${isFullscreen || isPrintLayout ? 'hidden' : ''}`}>
-        {/* ... (เนื้อหาตารางสรุป) ... */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 space-y-2 md:space-y-0">
           <h2 className="text-xl font-bold text-slate-800">
             สรุปข้อมูลพื้นที่สีเขียว ( {summaryMetric === 'arearai' ? 'ไร่' : 'ตัน'} ) - ระดับ{levelName}
@@ -1010,10 +1001,11 @@ const AiSpatialPage: React.FC = () => {
             className="bg-white shadow-2xl flex flex-col relative"
             style={{ width: paperSize.width, height: paperSize.height }}
           >
+            {/* ⭐️ นี่คือจุดที่แก้ไขตำแหน่งปุ่ม ⭐️ */}
             <button 
               onClick={handlePrintToPDF}
               disabled={isPrinting}
-              className="absolute -top-3 -right-12 z-50 bg-emerald-600 text-white rounded-full p-1.5 shadow-lg hover:bg-emerald-700 disabled:opacity-50"
+              className="absolute top-5 -right-3 z-50 bg-emerald-600 text-white rounded-full p-1.5 shadow-lg hover:bg-emerald-700 disabled:opacity-50"
               title="พิมพ์ (Export to PDF)"
             >
               {isPrinting ? (
@@ -1039,7 +1031,7 @@ const AiSpatialPage: React.FC = () => {
                 contentEditable="true" 
                 suppressContentEditableWarning={true} 
                 className="focus:outline-emerald-400"
-                onBlur={(e) => setPrintTitle(e.currentTarget.textContent || 'แผนที่การสะมคาร์บอนในพื้นที่สีเขียว')}
+                onBlur={(e) => setPrintTitle(e.currentTarget.textContent || 'แผนที่การสะสมคาร์บอนในพื้นที่สีเขียว')}
                 style={{ fontSize: '28px' }}
               >
                 {printTitle}
@@ -1083,7 +1075,6 @@ const AiSpatialPage: React.FC = () => {
 
               {isBottomPanelVisible && (
                 <div className="absolute bottom-10 left-4 right-4 z-10 flex h-44 space-x-2">
-                  {/* ... (เนื้อหา Bottom Panel ในโหมด Print) ... */}
                   <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
                     <div className="space-y-3">
                       <div className="flex items-center">
