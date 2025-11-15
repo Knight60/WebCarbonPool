@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UploadIcon, CameraIcon } from '../components/icons'; // <-- แก้ไขแล้ว
+import { UploadIcon, CameraIcon } from '../components/icons';
 
 interface HistoryItem {
   source: string;
@@ -14,7 +14,7 @@ interface IdentificationResult {
   description: string;
 }
 
-// --- START: Supported Species Data (ไม่เปลี่ยนแปลง) ---
+// --- START: Supported Species Data (คงไว้เหมือนเดิม) ---
 const supportedSpecies = [
     { common: "(1) แสมขาว", scientific: "Avicennia alba Blume" },
     { common: "(2) อโศกอินเดีย", scientific: "Monoon longifolium (Sonn.) B.Xue & R.M.K.Saunders" },
@@ -79,7 +79,7 @@ const supportedSpecies = [
 ];
 // --- END: Supported Species Data ---
 
-// --- START: File Conversion Function (ไม่เปลี่ยนแปลง) ---
+// --- START: File Conversion Function (คงไว้เหมือนเดิม) ---
 const convertFileToJpg = (file: File): Promise<File> => {
   return new Promise((resolve, reject) => {
     if (file.type === 'image/jpeg') {
@@ -139,18 +139,9 @@ const AiTaxonomyPage: React.FC = () => {
   const [sessionToken, setSessionToken] = useState<string>('New');
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
-  // --- START: อัปเดต useEffect สำหรับเปลี่ยน URL ---
-  useEffect(() => {
-    const base = import.meta.env.BASE_URL;
-    const targetPath = base === '/' 
-      ? '/AiTaxonomy'
-      : (base.endsWith('/') ? `${base}AiTaxonomy` : `${base}/AiTaxonomy`);
-
-    if (window.location.pathname !== targetPath) {
-      window.history.pushState(null, '', targetPath);
-    }
-  }, []); // [] dependency array
-  // --- END: อัปเดต useEffect ---
+  // --- START: ‼️ ลบ useEffect ที่บังคับ URL ออกแล้ว ‼️ ---
+  // (โค้ด useEffect ที่ใช้ window.history.pushState ถูกลบออกจากตรงนี้)
+  // --- END: แก้ไข ---
 
   const handleFileSelect = async (file: File | null | undefined) => {
     if (!file) return;
@@ -307,7 +298,6 @@ const AiTaxonomyPage: React.FC = () => {
 
       <div className="bg-white p-6 rounded-xl shadow-sm">
         <div className="grid md:grid-cols-2 gap-6 items-start">
-          {/* Left Column: Upload & Preview */}
           <div className="space-y-4">
 
             {!previewUrl && (
@@ -334,7 +324,6 @@ const AiTaxonomyPage: React.FC = () => {
                   onClick={handleRemoveFile}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg shadow-sm hover:bg-red-600 transition-colors font-semibold"
                 >
-                  {/* <XCircleIcon className="h-5 w-5" /> */}
                   ลบไฟล์นี้
                 </button>
               </div>
@@ -369,13 +358,12 @@ const AiTaxonomyPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Right Column: Result & History */}
           <div className="bg-slate-50 p-6 rounded-lg min-h-[300px] flex flex-col">
             
             <div className="flex-grow min-h-[150px] flex flex-col justify-center">
               {isLoading && (
                 <div className="space-y-4 animate-pulse">
-                  <div className="h-6 bg-slate-300 rounded w-3/4"></div>
+                  <div className="h-6 bg-slate-300 rounded w-3-4"></div>
                   <div className="h-4 bg-slate-300 rounded w-1/2"></div>
                   <div className="h-4 bg-slate-300 rounded w-full"></div>
                 </div>
@@ -394,6 +382,7 @@ const AiTaxonomyPage: React.FC = () => {
                   <div>
                     <h3 className="text-sm font-semibold text-slate-500">รายละเอียด</h3>
                     <p className="text-base text-slate-700 leading-relaxed">{result.description}</p>
+
                   </div>
                 </div>
               )}
@@ -435,7 +424,6 @@ const AiTaxonomyPage: React.FC = () => {
         </div>
       </div>
 
-      {/* --- Supported Species Section (ไม่เปลี่ยนแปลง) --- */}
       <div className="bg-white p-6 rounded-xl shadow-sm">
         <h2 className="text-2xl font-bold text-slate-800 mb-4">
           ชนิดพันธุ์ที่รองรับ (60 ชนิด)
@@ -451,7 +439,6 @@ const AiTaxonomyPage: React.FC = () => {
           ))}
         </div>
       </div>
-      {/* --- END: Supported Species Section --- */}
 
     </div>
   );
