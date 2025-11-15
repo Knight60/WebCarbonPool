@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, DragEvent, useMemo } from 'react';
+import React, { useState, useEffect, useRef, DragEvent, useMemo, useCallback } from 'react';
 import 'ol/ol.css';
 import Map from 'ol/Map';
 import View from 'ol/View';
@@ -25,10 +25,9 @@ import {
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import configLayersData from '../src/configLayers.json'; 
+import { useLocation, useNavigate } from 'react-router-dom'; 
 
 const THAILAND_BBOX: Extent = [96.692891, 5.122222, 106.192853, 21.402443];
-
-// ... (โค้ดส่วน Interface, Config, Functions ไม่มีการเปลี่ยนแปลง) ...
 
 interface LayerState {
   id: string;
@@ -127,7 +126,6 @@ const getValueForSort = (record: SummaryRecord, key: string): string | number | 
   return String(val);
 };
 
-
 const AiSpatialPage: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapTargetRef = useRef<HTMLDivElement>(null);
@@ -167,8 +165,9 @@ const AiSpatialPage: React.FC = () => {
   const printModalRef = useRef<HTMLDivElement>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [isPrintLandscape, setIsPrintLandscape] = useState(false); 
-
-  // ... (โค้ดส่วน useEffects, Handlers ไม่มีการเปลี่ยนแปลง) ...
+  
+  const location = useLocation(); 
+  const navigate = useNavigate();
 
   const toggleSeries = (key: string) => {
     setHiddenSeries(prev => {
@@ -191,6 +190,26 @@ const AiSpatialPage: React.FC = () => {
   useEffect(() => {
     setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
   }, []);
+
+  // ⭐️ 1. togglePrintLayout: ทำหน้าที่เปลี่ยน State และ URL
+  const togglePrintLayout = useCallback(() => {
+    setIsFullscreen(false);
+    const willBePrinting = !isPrintLayout;
+    
+    if (willBePrinting) {
+      if (!location.pathname.endsWith('/spatial/print')) {
+        navigate('/spatial/print'); 
+      }
+    } else {
+      if (location.pathname.endsWith('/spatial/print')) {
+        navigate('/spatial'); 
+      }
+    }
+    
+    setIsPrintLayout(willBePrinting); 
+    
+  }, [isPrintLayout, navigate, location.pathname]);
+
 
   useEffect(() => {
     const initialLayers = (configLayersData as LayerConfig[])
@@ -241,6 +260,45 @@ const AiSpatialPage: React.FC = () => {
       setMap(undefined);
     };
   }, []);
+
+  // ⭐️ 2. useEffect (Map Mover): ย้าย Map Target เมื่อ State เปลี่ยน (แก้กระพริบ)
+  useEffect(() => {
+    if (!map || !scaleLineControl.current) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (isPrintLayout) {
+        map.setTarget(printMapTargetRef.current || undefined);
+        if (printLayoutFooterRef.current) {
+          scaleLineControl.current!.setTarget(printLayoutFooterRef.current);
+        }
+      } else {
+        map.setTarget(mapTargetRef.current || undefined);
+        scaleLineControl.current!.setTarget(undefined as any); 
+      }
+      map.updateSize();
+      map.render();
+    }, 30); // ⭐️ ลด Timeout เหลือ 30ms
+
+    return () => clearTimeout(timer);
+    
+  }, [isPrintLayout, map]); // ⭐️ Run เมื่อ isPrintLayout หรือ map เปลี่ยน
+
+
+  // ⭐️ 3. useEffect (URL -> State): ซิงค์ URL กลับมาที่ State
+  useEffect(() => {
+    if (!map) return;
+    const shouldBePrinting = location.pathname.endsWith('/spatial/print');
+    
+    if (shouldBePrinting && !isPrintLayout) {
+      togglePrintLayout();
+    } else if (!shouldBePrinting && isPrintLayout) {
+      togglePrintLayout();
+    }
+    
+  }, [map, location.pathname, isPrintLayout, togglePrintLayout]);
+
 
   useEffect(() => {
     const calculatePaperSize = () => {
@@ -449,29 +507,7 @@ const AiSpatialPage: React.FC = () => {
     setIsFullscreen(prev => !prev);
     setTimeout(() => { map?.updateSize(); }, 150);
   };
-
-  const togglePrintLayout = () => {
-    setIsFullscreen(false);
-    const willBePrinting = !isPrintLayout;
-    setIsPrintLayout(willBePrinting);
-
-    setTimeout(() => {
-      if (!map || !scaleLineControl.current) return;
-      
-      if (willBePrinting) {
-        map.setTarget(printMapTargetRef.current || undefined);
-        if (printLayoutFooterRef.current) {
-          scaleLineControl.current.setTarget(printLayoutFooterRef.current);
-        }
-      } else {
-        map.setTarget(mapTargetRef.current || undefined);
-        scaleLineControl.current.setTarget(undefined as any); 
-      }
-      map.updateSize();
-      map.render(); 
-    }, 150); 
-  };
-
+  
   const handleOpacityChange = (id: string, newOpacity: number) => {
     setLayers(prevLayers =>
       prevLayers.map(layer => {
@@ -652,7 +688,6 @@ const AiSpatialPage: React.FC = () => {
 
   return (
     <> 
-      {/* ⭐️⭐️⭐️ แก้ไข STYLE ⭐️⭐️⭐️ */}
       <style>{`
         .ol-scale-bar { 
           left: 35px !important; 
@@ -676,7 +711,6 @@ const AiSpatialPage: React.FC = () => {
         }
 
         .print-bottom-panel {
-          /* ⭐️ ปรับจาก 10px เป็น 12.5px ⭐️ */
           font-size: 12.5px !important; 
           line-height: 1.4 !important;
         }
@@ -693,7 +727,6 @@ const AiSpatialPage: React.FC = () => {
           padding-bottom: 2px !important;
         }
       `}</style>
-      {/* ⭐️⭐️⭐️ END ⭐️⭐️⭐️ */}
 
       <div className={`space-y-6 th-font ${isFullscreen || isPrintLayout ? 'hidden' : 'space-y-6'}`}>
         <div className="text-center">

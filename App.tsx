@@ -49,6 +49,7 @@ const App: React.FC = () => {
             <Route path="plots" element={<SurveyPlotsPage />} />
             <Route path="species" element={<SpeciesPage />} />
             <Route path="spatial" element={<AiSpatialPage />} />
+            <Route path="spatial/print" element={<AiSpatialPage />} />
             <Route path="taxonomy" element={<AiTaxonomyPage />} />
             <Route path="data" element={<OpenDataPage />} />
 
