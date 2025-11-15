@@ -6,7 +6,7 @@ import TileLayer from 'ol/layer/Tile';
 import { OSM, XYZ, TileWMS, Tile as TileSource } from 'ol/source'; 
 import { fromLonLat, transformExtent } from 'ol/proj';
 import { Extent } from 'ol/extent';
-import { defaults as defaultControls } from 'ol/control';
+import { ScaleLine, defaults as defaultControls } from 'ol/control';
 import { 
   GripVertical, 
   ChevronUp, 
@@ -15,13 +15,11 @@ import {
   Shrink,
   SlidersHorizontal,
   X,
-  ArrowRightLeft
-} from 'lucide-react';
+  ArrowRightLeft,
+  PrinterIcon
+} from 'lucide-react'; 
 
 // (ส่วน Config ทั้งหมด, Interfaces, และ Functions ด้านบนคงไว้เหมือนเดิม)
-// ... (THAILAND_BBOX, LayerState, LocationOption, WMSConnection, LayerConfig)
-// ... (configLayers, seriesConfig, summaryStackKeys)
-// ... (createOlLayer, formatNumber, getValueForSort)
 const THAILAND_BBOX: Extent = [96.692891, 5.122222, 106.192853, 21.402443];
 interface LayerState {
   id: string;
@@ -224,6 +222,13 @@ const AiSpatialPage: React.FC = () => {
     order: 'desc',
   });
 
+  const [isPrintLayout, setIsPrintLayout] = useState(false);
+  const printMapTargetRef = useRef<HTMLDivElement>(null);
+  // ⭐️ ลบ: printLayoutFooterRef (ไม่จำเป็นต้องใช้ Ref แล้ว)
+  const scaleLineControl = useRef<ScaleLine | null>(null);
+  const [paperSize, setPaperSize] = useState({ width: '90vw', height: 'auto', isLandscape: false });
+  const [printTitle, setPrintTitle] = useState('แผนที่การสะสมคาร์บอนในพื้นที่สีเขียว');
+
   const toggleSeries = (key: string) => {
     setHiddenSeries(prev => {
       const next = new Set(prev);
@@ -274,7 +279,36 @@ const AiSpatialPage: React.FC = () => {
     };
   }, []);
 
-  // (ลบ useEffect ที่เกี่ยวกับ 'fullscreenchange' ออก)
+  useEffect(() => {
+    const calculatePaperSize = () => {
+      const vw = window.innerWidth * 0.9;
+      const vh = window.innerHeight * 0.9;
+      const a4LandscapeRatio = 1.414;
+      const a4PortraitRatio = 1 / a4LandscapeRatio;
+
+      const isLandscape = window.innerWidth > window.innerHeight;
+
+      if (isLandscape) {
+        const width = Math.min(vw, vh * a4LandscapeRatio);
+        const height = width / a4LandscapeRatio;
+        setPaperSize({ width: `${width}px`, height: `${height}px`, isLandscape: true });
+      } else {
+        const height = Math.min(vh, vw * a4LandscapeRatio);
+        const width = height * a4PortraitRatio;
+        setPaperSize({ width: `${width}px`, height: `${height}px`, isLandscape: false });
+      }
+    };
+
+    if (isPrintLayout) {
+      calculatePaperSize();
+      window.addEventListener('resize', calculatePaperSize);
+    }
+
+    return () => {
+      window.removeEventListener('resize', calculatePaperSize);
+    };
+  }, [isPrintLayout]);
+
 
   const fetchLocations = async (url: string, valueKey: string, textKey: string): Promise<LocationOption[]> => {
     try {
@@ -293,7 +327,6 @@ const AiSpatialPage: React.FC = () => {
     }
   };
   
-  // ... (useEffects สำหรับ Dropdown และ Dashboard data คงไว้เหมือนเดิม) ...
   useEffect(() => {
     fetchLocations("https://aigreen.dcce.go.th/rest/BBoxProvince", 'prov_code', 'prov_namt')
       .then(setProvinces);
@@ -350,7 +383,6 @@ const AiSpatialPage: React.FC = () => {
     });
   }, [summaryMetric]); 
 
-  // (Handlers: Dropdown changes, Layer visibility, Drag/Drop คงไว้เหมือนเดิม)
   const handleProvinceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedProv(value);
@@ -452,13 +484,40 @@ const AiSpatialPage: React.FC = () => {
     draggedItemIndex.current = null;
   };
 
-  // ⭐️ แก้ไข: toggleCustomFullscreen 
-  // (เปลี่ยนจากการเรียก Native API เป็นการสลับ State)
   const toggleCustomFullscreen = () => {
+    setIsPrintLayout(false);
     setIsFullscreen(prev => !prev);
-    
-    // แจ้ง OpenLayers ให้อัปเดตขนาดหลังจาก CSS transition (ประมาณ 150ms)
     setTimeout(() => { map?.updateSize(); }, 150);
+  };
+
+  // ⭐️ แก้ไข: togglePrintLayout (ลบ target ออกจาก ScaleLine)
+  const togglePrintLayout = () => {
+    setIsFullscreen(false);
+    const willBePrinting = !isPrintLayout;
+    setIsPrintLayout(willBePrinting);
+
+    setTimeout(() => {
+      if (!map) return;
+      
+      if (willBePrinting) {
+        map.setTarget(printMapTargetRef.current || undefined);
+        if (!scaleLineControl.current) {
+          scaleLineControl.current = new ScaleLine({
+            units: 'metric',
+            // (ลบ target)
+            className: 'ol-scale-line th-font'
+          });
+          map.addControl(scaleLineControl.current);
+        }
+      } else {
+        map.setTarget(mapTargetRef.current || undefined);
+        if (scaleLineControl.current) {
+          map.removeControl(scaleLineControl.current);
+          scaleLineControl.current = null;
+        }
+      }
+      map.updateSize();
+    }, 150); 
   };
 
   const handleOpacityChange = (id: string, newOpacity: number) => {
@@ -473,7 +532,6 @@ const AiSpatialPage: React.FC = () => {
     );
   };
   
-  // (Handlers: Sort, Memos คงไว้เหมือนเดิม)
   const handleSort = (key: string) => {
     setSortConfig(prevConfig => {
       let newOrder: 'asc' | 'desc' = 'desc'; 
@@ -543,6 +601,24 @@ const AiSpatialPage: React.FC = () => {
     return dataToSort;
   }, [filteredSummaryData, sortConfig]); 
   
+  // ⭐️ แก้ไข: locationSuffix (เอา comma ออก)
+  const locationSuffix = useMemo(() => {
+    const tambonName = tambons.find(t => t.value === selectedTambon)?.label;
+    const amphoeName = amphoes.find(a => a.value === selectedAmphoe)?.label;
+    const provName = provinces.find(p => p.value === selectedProv)?.label;
+
+    if (selectedTambon !== 'all' && tambonName && amphoeName && provName) {
+      return `ต. ${tambonName} อ. ${amphoeName} จ. ${provName}`;
+    }
+    if (selectedAmphoe !== 'all' && amphoeName && provName) {
+      return `อ. ${amphoeName} จ. ${provName}`;
+    }
+    if (selectedProv !== 'all' && provName) {
+      return `จ. ${provName}`;
+    }
+    return 'ประเทศไทย';
+  }, [selectedProv, selectedAmphoe, selectedTambon, provinces, amphoes, tambons]);
+
   const SortIcon = ({ forkey }: { forkey: string }) => {
     if (!sortConfig || sortConfig.key !== forkey) {
       return <span className="text-slate-400 opacity-30">↕</span>;
@@ -555,8 +631,7 @@ const AiSpatialPage: React.FC = () => {
 
   return (
     <> 
-      {/* 1. Page Header (ซ่อนเมื่อ isFullscreen) */}
-      <div className={`space-y-6 th-font ${isFullscreen ? 'hidden' : 'space-y-6'}`}>
+      <div className={`space-y-6 th-font ${isFullscreen || isPrintLayout ? 'hidden' : 'space-y-6'}`}>
         <div className="text-center">
           <h1 className="text-3xl font-bold text-slate-800">AI Spatial Analysis</h1>
           <p className="mt-2 text-slate-600">
@@ -565,171 +640,172 @@ const AiSpatialPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Map Container (แก้ไข className) */}
       <div 
         ref={mapContainerRef} 
         className={
           isFullscreen 
-            ? "fixed inset-0 z-50 bg-slate-200" // ⭐️ ขยายเต็มหน้าต่างเบราว์เซอร์
-            : "bg-slate-200 rounded-xl shadow-sm overflow-hidden relative mt-6" // ⭐️ สถานะปกติ
+            ? "fixed inset-0 z-50 bg-slate-200" 
+            : `bg-slate-200 rounded-xl shadow-sm overflow-hidden relative mt-6 ${isPrintLayout ? 'hidden' : ''}`
         }
         style={
           isFullscreen
             ? {} 
-            : { height: 'calc(100vh - 20rem)' } // ⭐️ สถานะปกติ
+            : { height: 'calc(100vh - 20rem)' }
         }
       >
         <div ref={mapTargetRef} className="w-full h-full" />
 
-        {/* ⭐️ Fullscreen Button (คงไว้ ไม่ซ่อน) ⭐️ */}
         <button 
           onClick={toggleCustomFullscreen} 
-          className="absolute top-2 left-2 z-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400" 
+          className={`absolute top-2 left-2 z-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 ${isPrintLayout ? 'hidden' : ''}`}
           title={isFullscreen ? "ออกจากโหมดเต็มจอ" : "แสดงผลเต็มจอ"}
         >
           {isFullscreen ? <Shrink size={24} /> : <Expand size={24} />}
         </button>
+
+        <button 
+          onClick={togglePrintLayout}
+          className={`absolute top-14 left-2 z-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400 ${isFullscreen ? 'hidden' : ''}`}
+          title={isPrintLayout ? "ออกจากโหมดพิมพ์" : "โหมดพิมพ์"}
+        >
+          {isPrintLayout ? <X size={24} /> : <PrinterIcon size={24} />}
+        </button>
         
-        {/* ⭐️ Layer Control Overlay (ซ่อนเมื่อ isFullscreen) ⭐️ */}
-        <div className={`absolute top-2 left-14 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30 ${isFullscreen ? 'hidden' : ''}`}>
-          <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => setIsLayerListVisible(prev => !prev)}>
-            <h2 className="text-lg font-semibold text-slate-800">ชั้นข้อมูล (Layers)</h2>
-            {isLayerListVisible ? <ChevronUp size={20} className="text-slate-600" /> : <ChevronDown size={20} className="text-slate-600" />}
-          </div>
-          {isLayerListVisible && (
-            <div className="mt-3">
-              <p className="text-xs text-slate-500 mb-3"> (ลากเพื่อสลับลำดับ)</p>
-              <div className="space-y-2">
-                {layers.map((layer, index) => (
-                  <div key={layer.id} draggable={true} onDragStart={() => handleDragStart(index)} onDragOver={handleDragOver} onDrop={() => handleDrop(index)} className="flex items-center p-2 rounded bg-white/50 hover:bg-slate-100 cursor-grab active:cursor-grabbing">
-                    <span className="text-slate-400 mr-2" title="ลากเพื่อสลับลำดับ"><GripVertical size={18} /></span>
-                    <input type="checkbox" checked={layer.visible} onChange={() => toggleLayerVisibility(layer.id)} className="h-5 w-5 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 mr-3"/>
-                    <span className="text-sm text-slate-700 select-none flex-grow">{layer.label}</span>
-                    <button onClick={(e) => { e.stopPropagation(); setOpacityEditor({ id: layer.id, label: layer.label }); }} className="ml-2 text-slate-500 hover:text-slate-800 px-1" title="ปรับความโปร่งใส">
-                      <SlidersHorizontal size={16} />
-                    </button>
-                  </div>
-                ))}
+        <div className={isFullscreen ? 'hidden' : ''}>
+          <div className="absolute top-2 left-14 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-30">
+            <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => setIsLayerListVisible(prev => !prev)}>
+              <h2 className="text-lg font-semibold text-slate-800">ชั้นข้อมูล (Layers)</h2>
+              {isLayerListVisible ? <ChevronUp size={20} className="text-slate-600" /> : <ChevronDown size={20} className="text-slate-600" />}
+            </div>
+            {isLayerListVisible && (
+              <div className="mt-3">
+                <p className="text-xs text-slate-500 mb-3"> (ลากเพื่อสลับลำดับ)</p>
+                <div className="space-y-2">
+                  {layers.map((layer, index) => (
+                    <div key={layer.id} draggable={true} onDragStart={() => handleDragStart(index)} onDragOver={handleDragOver} onDrop={() => handleDrop(index)} className="flex items-center p-2 rounded bg-white/50 hover:bg-slate-100 cursor-grab active:cursor-grabbing">
+                      <span className="text-slate-400 mr-2" title="ลากเพื่อสลับลำดับ"><GripVertical size={18} /></span>
+                      <input type="checkbox" checked={layer.visible} onChange={() => toggleLayerVisibility(layer.id)} className="h-5 w-5 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 mr-3"/>
+                      <span className="text-sm text-slate-700 select-none flex-grow">{layer.label}</span>
+                      <button onClick={(e) => { e.stopPropagation(); setOpacityEditor({ id: layer.id, label: layer.label }); }} className="ml-2 text-slate-500 hover:text-slate-800 px-1" title="ปรับความโปร่งใส">
+                        <SlidersHorizontal size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
+            )}
+          </div>
+                    
+          {opacityEditor && (
+            <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-lg z-40 w-64">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold text-slate-700 truncate pr-2" title={opacityEditor.label}>{opacityEditor.label}</h3>
+                <button onClick={() => setOpacityEditor(null)} className="text-slate-500 hover:text-slate-800"><X size={18} /></button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-slate-600">0%</span>
+                <input type="range" min="0" max="1" step="0.05" value={layers.find(l => l.id === opacityEditor.id)?.opacity || 1} onChange={(e) => handleOpacityChange(opacityEditor.id, parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer range-sm"/>
+                <span className="text-sm text-slate-600">100%</span>
+              </div>
+              <div className="text-center text-sm text-slate-700 mt-2">{Math.round((layers.find(l => l.id === opacityEditor.id)?.opacity || 1) * 100)}%</div>
             </div>
           )}
-        </div>
-                  
-        {/* ⭐️ Opacity Editor Modal (ซ่อนเมื่อ isFullscreen) ⭐️ */}
-        {opacityEditor && (
-          <div className={`absolute top-4 right-4 bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-lg z-40 w-64 ${isFullscreen ? 'hidden' : ''}`}>
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-sm font-semibold text-slate-700 truncate pr-2" title={opacityEditor.label}>{opacityEditor.label}</h3>
-              <button onClick={() => setOpacityEditor(null)} className="text-slate-500 hover:text-slate-800"><X size={18} /></button>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-slate-600">0%</span>
-              <input type="range" min="0" max="1" step="0.05" value={layers.find(l => l.id === opacityEditor.id)?.opacity || 1} onChange={(e) => handleOpacityChange(opacityEditor.id, parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer range-sm"/>
-              <span className="text-sm text-slate-600">100%</span>
-            </div>
-            <div className="text-center text-sm text-slate-700 mt-2">{Math.round((layers.find(l => l.id === opacityEditor.id)?.opacity || 1) * 100)}%</div>
-          </div>
-        )}
 
-        {/* ⭐️ Wrapper Controls ด้านล่าง (Dropdown + Chart) (คงไว้ ไม่ซ่อน) ⭐️ */}
-        <div className="absolute bottom-4 left-4 right-4 z-30 flex h-44 space-x-2 th-font">
-          {/* Panel 1: Location Dropdowns */}
-          <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
-            <div className="space-y-3">
-              <div className="flex items-center">
-                <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
-                <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedProv} onChange={handleProvinceChange}>
-                  <option value="all">ทุกจังหวัด</option>
-                  {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                </select>
-              </div>
-              <div className="flex items-center">
-                <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
-                <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedAmphoe} onChange={handleAmphoeChange} disabled={selectedProv === 'all' || amphoes.length === 0}>
-                  <option value="all">ทุกอำเภอ</option>
-                  {amphoes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                </select>
-              </div>
-              <div className="flex items-center">
-                <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
-                <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedTambon} onChange={handleTambonChange} disabled={selectedAmphoe === 'all' || tambons.length === 0}>
-                  <option value="all">ทุกตำบล</option>
-                  {tambons.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                </select>
+          <div className="absolute bottom-4 left-4 right-4 z-30 flex h-44 space-x-2 th-font">
+            <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
+              <div className="space-y-3">
+                <div className="flex items-center">
+                  <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
+                  <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedProv} onChange={handleProvinceChange}>
+                    <option value="all">ทุกจังหวัด</option>
+                    {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
+                <div className="flex items-center">
+                  <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
+                  <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedAmphoe} onChange={handleAmphoeChange} disabled={selectedProv === 'all' || amphoes.length === 0}>
+                    <option value="all">ทุกอำเภอ</option>
+                    {amphoes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
+                <div className="flex items-center">
+                  <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
+                  <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedTambon} onChange={handleTambonChange} disabled={selectedAmphoe === 'all' || tambons.length === 0}>
+                    <option value="all">ทุกตำบล</option>
+                    {tambons.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
               </div>
             </div>
-          </div>
-          {/* Panel 2: Chart Legend */}
-          <div className="flex-shrink-0 w-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg h-full overflow-y-auto space-y-1">
-            {Object.entries(seriesConfig).map(([key, { name, color }]) => (
-              <div
-                key={key}
-                onClick={() => toggleSeries(key)}
-                className={`flex items-center space-x-2 cursor-pointer p-0.5 rounded ${hiddenSeries.has(key) ? 'opacity-40 line-through' : ''}`}
-                title={`คลิกเพื่อซ่อน/แสดง ${name}`}
-              >
-                <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }}></div>
-                <span className="text-xs text-slate-700 truncate">{name}</span>
+            <div className="flex-shrink-0 w-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg h-full overflow-y-auto space-y-1">
+              {Object.entries(seriesConfig).map(([key, { name, color }]) => (
+                <div
+                  key={key}
+                  onClick={() => toggleSeries(key)}
+                  className={`flex items-center space-x-2 cursor-pointer p-0.5 rounded ${hiddenSeries.has(key) ? 'opacity-40 line-through' : ''}`}
+                  title={`คลิกเพื่อซ่อน/แสดง ${name}`}
+                >
+                  <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }}></div>
+                  <span className="text-xs text-slate-700 truncate">{name}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex-grow bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-full overflow-y-hidden overflow-x-auto px-2 py-2">
+              <div className="flex h-full gap-x-2" style={{ width: `${sortedData.length * 50 + (sortedData.length > 0 ? (sortedData.length - 1) * 8 : 0)}px` }}>
+                {isSummaryLoading ? (
+                  <div className="text-slate-500 text-sm p-2">กำลังโหลด...</div>
+                ) : sortedData.length === 0 ? (
+                   <div className="text-slate-500 text-sm p-2">ไม่พบข้อมูล</div>
+                ) : (
+                  sortedData.map(record => {
+                    const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
+                       if (hiddenSeries.has(key)) return sum;
+                       const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                       return sum + parseFloat(String(rawValue).replace(/,/g, ''));
+                    }, 0);
+                    
+                    const barTitle = `${record[nameKey]} (${record[codeKey]}) \nTotal (ที่แสดง): ${formatNumber(calculatedTotal)}`;
+                    
+                    return (
+                      <div 
+                        key={record[codeKey]} 
+                        className="flex-shrink-0 w-12 h-full flex flex-col" 
+                        title={barTitle}
+                      >
+                        <div className="flex flex-col-reverse relative flex-grow mb-1">
+                          {summaryStackKeys.map(key => {
+                            const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                            const value = parseFloat(String(rawValue).replace(/,/g, ''));
+                            const heightPercent = maxValue === 0 ? 0 : (value / maxValue) * 100;
+                            const segmentTitle = `${seriesConfig[key].name}: ${formatNumber(value)}`;
+                            
+                            return (
+                              <div
+                                key={key}
+                                title={segmentTitle}
+                                className="transition-all"
+                                style={{
+                                  height: hiddenSeries.has(key) ? 0 : `${heightPercent}%`,
+                                  backgroundColor: seriesConfig[key].color,
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                        <div className="h-6 flex-shrink-0 text-xs text-slate-700 text-center truncate pt-1">
+                          {record[nameKey]}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
-            ))}
-          </div>
-          {/* Panel 3: Chart Area */}
-          <div className="flex-grow bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-full overflow-y-hidden overflow-x-auto px-2 py-2">
-            <div className="flex h-full gap-x-2" style={{ width: `${sortedData.length * 50 + (sortedData.length > 0 ? (sortedData.length - 1) * 8 : 0)}px` }}>
-              {isSummaryLoading ? (
-                <div className="text-slate-500 text-sm p-2">กำลังโหลด...</div>
-              ) : sortedData.length === 0 ? (
-                 <div className="text-slate-500 text-sm p-2">ไม่พบข้อมูล</div>
-              ) : (
-                sortedData.map(record => {
-                  const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
-                     if (hiddenSeries.has(key)) return sum;
-                     const rawValue = record[`${summaryMetric}_${key}`] || 0;
-                     return sum + parseFloat(String(rawValue).replace(/,/g, ''));
-                  }, 0);
-                  
-                  const barTitle = `${record[nameKey]} (${record[codeKey]}) \nTotal (ที่แสดง): ${formatNumber(calculatedTotal)}`;
-                  
-                  return (
-                    <div 
-                      key={record[codeKey]} 
-                      className="flex-shrink-0 w-12 h-full flex flex-col" 
-                      title={barTitle}
-                    >
-                      <div className="flex flex-col-reverse relative flex-grow mb-1">
-                        {summaryStackKeys.map(key => {
-                          const rawValue = record[`${summaryMetric}_${key}`] || 0;
-                          const value = parseFloat(String(rawValue).replace(/,/g, ''));
-                          const heightPercent = maxValue === 0 ? 0 : (value / maxValue) * 100;
-                          const segmentTitle = `${seriesConfig[key].name}: ${formatNumber(value)}`;
-                          
-                          return (
-                            <div
-                              key={key}
-                              title={segmentTitle}
-                              className="transition-all"
-                              style={{
-                                height: hiddenSeries.has(key) ? 0 : `${heightPercent}%`,
-                                backgroundColor: seriesConfig[key].color,
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                      <div className="h-6 flex-shrink-0 text-xs text-slate-700 text-center truncate pt-1">
-                        {record[nameKey]}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* 4. Dashboard (ตารางสรุป) (ซ่อนเมื่อ isFullscreen) */}
-      <div className={`p-4 bg-white rounded-xl shadow-sm th-font mt-6 ${isFullscreen ? 'hidden' : ''}`}>
+      <div className={`p-4 bg-white rounded-xl shadow-sm th-font mt-6 ${isFullscreen || isPrintLayout ? 'hidden' : ''}`}>
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 space-y-2 md:space-y-0">
           <h2 className="text-xl font-bold text-slate-800">
             สรุปข้อมูลพื้นที่สีเขียว ( {summaryMetric === 'arearai' ? 'ไร่' : 'ตัน'} ) - ระดับ{levelName}
@@ -821,6 +897,157 @@ const AiSpatialPage: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {isPrintLayout && (
+        <div className="fixed inset-0 z-50 bg-black/70 grid place-items-center p-4 th-font">
+          <div 
+            className="bg-white shadow-2xl flex flex-col relative"
+            style={{ width: paperSize.width, height: paperSize.height }}
+          >
+            <button 
+              onClick={togglePrintLayout} 
+              className="absolute -top-3 -right-3 z-50 bg-red-600 text-white rounded-full p-1.5 shadow-lg hover:bg-red-700"
+              title="ปิดโหมดพิมพ์"
+            >
+              <X size={18} />
+            </button>
+
+            {/* ⭐️ 4. แก้ไข Title Bar (ขนาด, การจัดเรียง 2 บรรทัด, margin) ⭐️ */}
+            <div 
+              className="text-center p-2 font-['Sarabun'] border-b border-black flex-shrink-0"
+              style={{ marginLeft: '0.5in', marginRight: '0.5in', marginTop: '0.25in' }}
+            >
+              <span 
+                contentEditable="true" 
+                suppressContentEditableWarning={true} 
+                className="focus:outline-emerald-400"
+                onBlur={(e) => setPrintTitle(e.currentTarget.textContent || 'แผนที่การสะสมคาร์บอนในพื้นที่สีเขียว')}
+                style={{ fontSize: '28px' }}
+              >
+                {printTitle}
+              </span>
+              
+              {(selectedAmphoe === 'all' && selectedTambon === 'all') ? (
+                <span className="ml-4" style={{ fontSize: '28px' }}>
+                  {locationSuffix}
+                </span>
+              ) : (
+                <>
+                  <br />
+                  <span className="ml-0" style={{ fontSize: '28px' }}>
+                    {locationSuffix}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* ⭐️ 5. แก้ไข Map Container (เพิ่ม margin) ⭐️ */}
+            <div 
+              className="flex-grow relative overflow-hidden"
+              style={{ marginLeft: '0.5in', marginRight: '0.5in' }}
+            >
+              <div ref={printMapTargetRef} className="w-full h-full" />
+              
+              <div 
+                className="absolute top-4 right-4 w-10 h-10 bg-white/70 border border-black rounded-full grid place-items-center text-xl font-bold"
+                title="ทิศเหนือ"
+              >
+                N
+                <div className="absolute top-1 w-0.5 h-3 bg-black"></div>
+              </div>
+
+              <div className="absolute bottom-4 left-4 right-4 z-10 flex h-44 space-x-2">
+                <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
+                  <div className="space-y-3">
+                    <div className="flex items-center">
+                      <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
+                      <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300" value={selectedProv} onChange={handleProvinceChange}>
+                        <option value="all">ทุกจังหวัด</option>
+                        {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                      </select>
+                    </div>
+                    <div className="flex items-center">
+                      <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
+                      <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300" value={selectedAmphoe} onChange={handleAmphoeChange} disabled={selectedProv === 'all' || amphoes.length === 0}>
+                        <option value="all">ทุกอำเภอ</option>
+                        {amphoes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                      </select>
+                    </div>
+                    <div className="flex items-center">
+                      <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
+                      <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300" value={selectedTambon} onChange={handleTambonChange} disabled={selectedAmphoe === 'all' || tambons.length === 0}>
+                        <option value="all">ทุกตำบล</option>
+                        {tambons.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-shrink-0 w-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg h-full overflow-y-auto space-y-1">
+                  {Object.entries(seriesConfig).map(([key, { name, color }]) => (
+                    <div
+                      key={key}
+                      onClick={() => toggleSeries(key)}
+                      className={`flex items-center space-x-2 cursor-pointer p-0.5 rounded ${hiddenSeries.has(key) ? 'opacity-40 line-through' : ''}`}
+                    >
+                      <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }}></div>
+                      <span className="text-xs text-slate-700 truncate">{name}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex-grow bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-full overflow-y-hidden overflow-x-auto px-2 py-2">
+                   <div className="flex h-full gap-x-2" style={{ width: `${sortedData.length * 50 + (sortedData.length > 0 ? (sortedData.length - 1) * 8 : 0)}px` }}>
+                    {isSummaryLoading ? (
+                      <div className="text-slate-500 text-sm p-2">กำลังโหลด...</div>
+                    ) : sortedData.length === 0 ? (
+                      <div className="text-slate-500 text-sm p-2">ไม่พบข้อมูล</div>
+                    ) : (
+                      sortedData.map(record => {
+                        const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
+                          if (hiddenSeries.has(key)) return sum;
+                          const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                          return sum + parseFloat(String(rawValue).replace(/,/g, ''));
+                        }, 0);
+                        const barTitle = `${record[nameKey]} (${record[codeKey]}) \nTotal (ที่แสดง): ${formatNumber(calculatedTotal)}`;
+                        return (
+                          <div key={record[codeKey]} className="flex-shrink-0 w-12 h-full flex flex-col" title={barTitle}>
+                            <div className="flex flex-col-reverse relative flex-grow mb-1">
+                              {summaryStackKeys.map(key => {
+                                const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                                const value = parseFloat(String(rawValue).replace(/,/g, ''));
+                                const heightPercent = maxValue === 0 ? 0 : (value / maxValue) * 100;
+                                const segmentTitle = `${seriesConfig[key].name}: ${formatNumber(value)}`;
+                                return (
+                                  <div
+                                    key={key}
+                                    title={segmentTitle}
+                                    className="transition-all"
+                                    style={{ height: hiddenSeries.has(key) ? 0 : `${heightPercent}%`, backgroundColor: seriesConfig[key].color }}
+                                  />
+                                );
+                              })}
+                            </div>
+                            <div className="h-6 flex-shrink-0 text-xs text-slate-700 text-center truncate pt-1">
+                              {record[nameKey]}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ⭐️ 6. แก้ไข Footer (เพิ่ม margin, ลบ ref) ⭐️ */}
+            <div 
+              className="p-2 border-t border-black h-8 flex-shrink-0"
+              style={{ marginLeft: '0.5in', marginRight: '0.5in', marginBottom: '0.5in' }}
+            >
+              {/* ScaleLine control จะถูกใส่ในนี้โดยอัตโนมัติ (เพราะเราลบ target) */}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

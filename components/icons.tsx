@@ -64,3 +64,10 @@ export const ChartPieIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => 
     </svg>
 );
 
+// ⭐️ เพิ่ม Icon ใหม่ ⭐️
+export const PrinterIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg {...props} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0c1.091 0 1.981-.88 1.981-1.971V6.708c0-1.09-.89-1.971-1.98-1.971H7.231c-1.09 0-1.98.88-1.98 1.971v9.321c0 1.09.89 1.971 1.98 1.971h11.318z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18L16.5 12.75H7.5V18m9 0l-3-3m0 0l-3 3m3-3V6.75m0 0l3 3m-3-3l-3 3" />
+  </svg>
+);
