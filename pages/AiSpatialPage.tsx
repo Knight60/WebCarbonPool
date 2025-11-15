@@ -543,6 +543,7 @@ const AiSpatialPage: React.FC = () => {
         scaleLineControl.current.setTarget(scaleLineTargetRef.current || undefined);
       }
       map.updateSize();
+      map.render(); // ⭐️ นี่คือจุดแก้ไขที่ 1 (PDF Fix) ⭐️
     }, 150); 
   };
 
@@ -580,35 +581,36 @@ const AiSpatialPage: React.FC = () => {
     try {
       map.once('rendercomplete', async () => {
         
-        setTimeout(async () => {
-          try {
-            const canvas = await html2canvas(elementToPrint, {
-              useCORS: true, 
-              scale: 2, 
-              logging: false, 
-            });
-            
-            const imgData = canvas.toDataURL('image/png');
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
-            
-            const orientation = imgWidth > imgHeight ? 'l' : 'p';
-            const pdf = new jsPDF({
-              orientation: orientation,
-              unit: 'px',
-              format: [imgWidth, imgHeight] 
-            });
+        // ⭐️ นี่คือจุดแก้ไขที่ 2 (PDF Fix - ลบ setTimeout ออก) ⭐️
+        try {
+          const canvas = await html2canvas(elementToPrint, {
+            useCORS: true, 
+            scale: 2, 
+            logging: false, 
+            ignoreElements: (element) => element.classList.contains('no-print')
+          });
+          
+          const imgData = canvas.toDataURL('image/png');
+          const imgWidth = canvas.width;
+          const imgHeight = canvas.height;
+          
+          const orientation = imgWidth > imgHeight ? 'l' : 'p';
+          const pdf = new jsPDF({
+            orientation: orientation,
+            unit: 'px',
+            format: [imgWidth, imgHeight] 
+          });
 
-            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-            pdf.save('aigreen-map.pdf');
+          pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+          pdf.save('aigreen-map.pdf');
 
-          } catch (innerError) {
-            console.error("เกิดข้อผิดพลาดในการสร้าง PDF (inner - html2canvas):", innerError);
-            alert("ไม่สามารถสร้าง PDF ได้ (inner) กรุณาลองใหม่อีกครั้ง");
-          } finally {
-            setIsPrinting(false);
-          }
-        }, 500); 
+        } catch (innerError) {
+          console.error("เกิดข้อผิดพลาดในการสร้าง PDF (inner - html2canvas):", innerError);
+          alert("ไม่สามารถสร้าง PDF ได้ (inner) กรุณาลองใหม่อีกครั้ง");
+        } finally {
+          setIsPrinting(false);
+        }
+        // ⭐️ สิ้นสุดจุดแก้ไขที่ 2 ⭐️
       });
 
       map.render();
@@ -750,155 +752,156 @@ const AiSpatialPage: React.FC = () => {
           </button>
         </div>
         
-        <div className={isFullscreen ? 'hidden' : ''}>
-          <div className="absolute top-2 left-2 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-20">
-            <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => setIsLayerListVisible(prev => !prev)}>
-              <h2 className="text-lg font-semibold text-slate-800">ชั้นข้อมูล (Layers)</h2>
-              {isLayerListVisible ? <ChevronUp size={20} className="text-slate-600" /> : <ChevronDown size={20} className="text-slate-600" />}
-            </div>
-            {isLayerListVisible && (
-              <div className="mt-3">
-                <p className="text-xs text-slate-500 mb-3"> (ลากเพื่อสลับลำดับ)</p>
-                <div className="space-y-2">
-                  {layers.map((layer, index) => (
-                    <div key={layer.id} draggable={true} onDragStart={() => handleDragStart(index)} onDragOver={handleDragOver} onDrop={() => handleDrop(index)} className="flex items-center p-2 rounded bg-white/50 hover:bg-slate-100 cursor-grab active:cursor-grabbing">
-                      <span className="text-slate-400 mr-2" title="ลากเพื่อสลับลำดับ"><GripVertical size={18} /></span>
-                      <input type="checkbox" checked={layer.visible} onChange={() => toggleLayerVisibility(layer.id)} className="h-5 w-5 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 mr-3"/>
-                      <span className="text-sm text-slate-700 select-none flex-grow">{layer.label}</span>
-                      <button onClick={(e) => { e.stopPropagation(); setOpacityEditor({ id: layer.id, label: layer.label }); }} className="ml-2 text-slate-500 hover:text-slate-800 px-1" title="ปรับความโปร่งใส">
-                        <SlidersHorizontal size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+        {/* ⭐️ นี่คือจุดแก้ไข (Fullscreen Fix) - ลบ div ที่ซ่อนเนื้อหาตอน Fullscreen ออก ⭐️ */}
+        
+        <div className="absolute top-2 left-2 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-xs md:max-w-sm z-20">
+          <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => setIsLayerListVisible(prev => !prev)}>
+            <h2 className="text-lg font-semibold text-slate-800">ชั้นข้อมูล (Layers)</h2>
+            {isLayerListVisible ? <ChevronUp size={20} className="text-slate-600" /> : <ChevronDown size={20} className="text-slate-600" />}
           </div>
-                    
-          {opacityEditor && (
-            <div className="absolute top-2 right-16 bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-lg z-30 w-64">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-semibold text-slate-700 truncate pr-2" title={opacityEditor.label}>{opacityEditor.label}</h3>
-                <button onClick={() => setOpacityEditor(null)} className="text-slate-500 hover:text-slate-800"><X size={18} /></button>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-slate-600">0%</span>
-                <input type="range" min="0" max="1" step="0.05" value={layers.find(l => l.id === opacityEditor.id)?.opacity || 1} onChange={(e) => handleOpacityChange(opacityEditor.id, parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer range-sm"/>
-                <span className="text-sm text-slate-600">100%</span>
-              </div>
-              <div className="text-center text-sm text-slate-700 mt-2">{Math.round((layers.find(l => l.id === opacityEditor.id)?.opacity || 1) * 100)}%</div>
-            </div>
-          )}
-
-          <button
-            onClick={() => setIsBottomPanelVisible(prev => !prev)}
-            className="absolute bottom-4 left-4 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
-            title={isBottomPanelVisible ? "ซ่อนแผงข้อมูลสรุป" : "แสดงแผงข้อมูลสรุป"}
-          >
-            <BarChart3 size={24} />
-          </button>
-
-          <div 
-            ref={scaleLineTargetRef} 
-            className="absolute bottom-2 left-20 z-20" 
-          />
-          
-          {isBottomPanelVisible && (
-            <div className="absolute bottom-14 left-4 right-4 z-20 flex h-44 space-x-2 th-font">
-              <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
-                <div className="space-y-3">
-                  <div className="flex items-center">
-                    <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
-                    <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedProv} onChange={handleProvinceChange}>
-                      <option value="all">ทุกจังหวัด</option>
-                      {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                    </select>
-                  </div>
-                  <div className="flex items-center">
-                    <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
-                    <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedAmphoe} onChange={handleAmphoeChange} disabled={selectedProv === 'all' || amphoes.length === 0}>
-                      <option value="all">ทุกอำเภอ</option>
-                      {amphoes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                    </select>
-                  </div>
-                  <div className="flex items-center">
-                    <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
-                    <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedTambon} onChange={handleTambonChange} disabled={selectedAmphoe === 'all' || tambons.length === 0}>
-                      <option value="all">ทุกตำบล</option>
-                      {tambons.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div className="flex-shrink-0 w-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg h-full overflow-y-auto space-y-1">
-                {Object.entries(seriesConfig).map(([key, { name, color }]) => (
-                  <div
-                    key={key}
-                    onClick={() => toggleSeries(key)}
-                    className={`flex items-center space-x-2 cursor-pointer p-0.5 rounded ${hiddenSeries.has(key) ? 'opacity-40 line-through' : ''}`}
-                    title={`คลิกเพื่อซ่อน/แสดง ${name}`}
-                  >
-                    <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }}></div>
-                    <span className="text-xs text-slate-700 truncate">{name}</span>
+          {isLayerListVisible && (
+            <div className="mt-3">
+              <p className="text-xs text-slate-500 mb-3"> (ลากเพื่อสลับลำดับ)</p>
+              <div className="space-y-2">
+                {layers.map((layer, index) => (
+                  <div key={layer.id} draggable={true} onDragStart={() => handleDragStart(index)} onDragOver={handleDragOver} onDrop={() => handleDrop(index)} className="flex items-center p-2 rounded bg-white/50 hover:bg-slate-100 cursor-grab active:cursor-grabbing">
+                    <span className="text-slate-400 mr-2" title="ลากเพื่อสลับลำดับ"><GripVertical size={18} /></span>
+                    <input type="checkbox" checked={layer.visible} onChange={() => toggleLayerVisibility(layer.id)} className="h-5 w-5 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 mr-3"/>
+                    <span className="text-sm text-slate-700 select-none flex-grow">{layer.label}</span>
+                    <button onClick={(e) => { e.stopPropagation(); setOpacityEditor({ id: layer.id, label: layer.label }); }} className="ml-2 text-slate-500 hover:text-slate-800 px-1" title="ปรับความโปร่งใส">
+                      <SlidersHorizontal size={16} />
+                    </button>
                   </div>
                 ))}
               </div>
-              <div className="flex-grow bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-full flex flex-col overflow-hidden p-2">
-                <div className="flex-grow overflow-y-hidden overflow-x-auto px-2 py-2">
-                  <div className="flex h-full gap-x-2" style={{ width: `${sortedData.length * 50 + (sortedData.length > 0 ? (sortedData.length - 1) * 8 : 0)}px` }}>
-                    {isSummaryLoading ? (
-                      <div className="text-slate-500 text-sm p-2">กำลังโหลด...</div>
-                    ) : sortedData.length === 0 ? (
-                      <div className="text-slate-500 text-sm p-2">ไม่พบข้อมูล</div>
-                    ) : (
-                      sortedData.map(record => {
-                        const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
-                          if (hiddenSeries.has(key)) return sum;
-                          const rawValue = record[`${summaryMetric}_${key}`] || 0;
-                          return sum + parseFloat(String(rawValue).replace(/,/g, ''));
-                        }, 0);
-                        
-                        const barTitle = `${record[nameKey]} (${record[codeKey]}) \nTotal (ที่แสดง): ${formatNumber(calculatedTotal)}`;
-                        
-                        return (
-                          <div 
-                            key={record[codeKey]} 
-                            className="flex-shrink-0 w-12 h-full flex flex-col" 
-                            title={barTitle}
-                          >
-                            <div className="flex flex-col-reverse relative flex-grow mb-1">
-                              {summaryStackKeys.map(key => {
-                                const rawValue = record[`${summaryMetric}_${key}`] || 0;
-                                const value = parseFloat(String(rawValue).replace(/,/g, ''));
-                                const heightPercent = maxValue === 0 ? 0 : (value / maxValue) * 100;
-                                const segmentTitle = `${seriesConfig[key].name}: ${formatNumber(value)}`;
-                                
-                                return (
-                                  <div
-                                    key={key}
-                                    title={segmentTitle}
-                                    className="transition-all"
-                                    style={{
-                                      height: hiddenSeries.has(key) ? 0 : `${heightPercent}%`,
-                                      backgroundColor: seriesConfig[key].color,
-                                    }}
-                                  />
-                                );
-                              })}
-                            </div>
-                            <div className="h-6 flex-shrink-0 text-xs text-slate-700 text-center truncate pt-1">
-                              {record[nameKey]}
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+            </div>
+          )}
+        </div>
+                  
+        {opacityEditor && (
+          <div className="absolute top-2 right-16 bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow-lg z-30 w-64">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm font-semibold text-slate-700 truncate pr-2" title={opacityEditor.label}>{opacityEditor.label}</h3>
+              <button onClick={() => setOpacityEditor(null)} className="text-slate-500 hover:text-slate-800"><X size={18} /></button>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-slate-600">0%</span>
+              <input type="range" min="0" max="1" step="0.05" value={layers.find(l => l.id === opacityEditor.id)?.opacity || 1} onChange={(e) => handleOpacityChange(opacityEditor.id, parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer range-sm"/>
+              <span className="text-sm text-slate-600">100%</span>
+            </div>
+            <div className="text-center text-sm text-slate-700 mt-2">{Math.round((layers.find(l => l.id === opacityEditor.id)?.opacity || 1) * 100)}%</div>
+          </div>
+        )}
+
+        <button
+          onClick={() => setIsBottomPanelVisible(prev => !prev)}
+          className="absolute bottom-4 left-4 z-30 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg text-slate-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          title={isBottomPanelVisible ? "ซ่อนแผงข้อมูลสรุป" : "แสดงแผงข้อมูลสรุป"}
+        >
+          <BarChart3 size={24} />
+        </button>
+
+        <div 
+          ref={scaleLineTargetRef} 
+          className="absolute bottom-2 left-20 z-20" 
+        />
+        
+        {isBottomPanelVisible && (
+          <div className="absolute bottom-14 left-4 right-4 z-20 flex h-44 space-x-2 th-font">
+            <div className="flex-shrink-0 w-72 bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg h-full overflow-y-auto">
+              <div className="space-y-3">
+                <div className="flex items-center">
+                  <label className="w-1/4 text-sm font-semibold text-slate-700">จังหวัด</label>
+                  <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedProv} onChange={handleProvinceChange}>
+                    <option value="all">ทุกจังหวัด</option>
+                    {provinces.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
+                <div className="flex items-center">
+                  <label className="w-1/4 text-sm font-semibold text-slate-700">อำเภอ</label>
+                  <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedAmphoe} onChange={handleAmphoeChange} disabled={selectedProv === 'all' || amphoes.length === 0}>
+                    <option value="all">ทุกอำเภอ</option>
+                    {amphoes.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
+                </div>
+                <div className="flex items-center">
+                  <label className="w-1/4 text-sm font-semibold text-slate-700">ตำบล</label>
+                  <select className="w-3/4 form-select form-select-sm rounded-md shadow-sm border-slate-300 focus:border-emerald-400 focus:ring focus:ring-emerald-300 focus:ring-opacity-50" value={selectedTambon} onChange={handleTambonChange} disabled={selectedAmphoe === 'all' || tambons.length === 0}>
+                    <option value="all">ทุกตำบล</option>
+                    {tambons.map(opt => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                  </select>
                 </div>
               </div>
             </div>
-          )} 
-        </div>
+            <div className="flex-shrink-0 w-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg h-full overflow-y-auto space-y-1">
+              {Object.entries(seriesConfig).map(([key, { name, color }]) => (
+                <div
+                  key={key}
+                  onClick={() => toggleSeries(key)}
+                  className={`flex items-center space-x-2 cursor-pointer p-0.5 rounded ${hiddenSeries.has(key) ? 'opacity-40 line-through' : ''}`}
+                  title={`คลิกเพื่อซ่อน/แสดง ${name}`}
+                >
+                  <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: color }}></div>
+                  <span className="text-xs text-slate-700 truncate">{name}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex-grow bg-white/80 backdrop-blur-sm rounded-lg shadow-lg h-full flex flex-col overflow-hidden p-2">
+              <div className="flex-grow overflow-y-hidden overflow-x-auto px-2 py-2">
+                <div className="flex h-full gap-x-2" style={{ width: `${sortedData.length * 50 + (sortedData.length > 0 ? (sortedData.length - 1) * 8 : 0)}px` }}>
+                  {isSummaryLoading ? (
+                    <div className="text-slate-500 text-sm p-2">กำลังโหลด...</div>
+                  ) : sortedData.length === 0 ? (
+                    <div className="text-slate-500 text-sm p-2">ไม่พบข้อมูล</div>
+                  ) : (
+                    sortedData.map(record => {
+                      const calculatedTotal = summaryStackKeys.reduce((sum, key) => {
+                        if (hiddenSeries.has(key)) return sum;
+                        const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                        return sum + parseFloat(String(rawValue).replace(/,/g, ''));
+                      }, 0);
+                      
+                      const barTitle = `${record[nameKey]} (${record[codeKey]}) \nTotal (ที่แสดง): ${formatNumber(calculatedTotal)}`;
+                      
+                      return (
+                        <div 
+                          key={record[codeKey]} 
+                          className="flex-shrink-0 w-12 h-full flex flex-col" 
+                          title={barTitle}
+                        >
+                          <div className="flex flex-col-reverse relative flex-grow mb-1">
+                            {summaryStackKeys.map(key => {
+                              const rawValue = record[`${summaryMetric}_${key}`] || 0;
+                              const value = parseFloat(String(rawValue).replace(/,/g, ''));
+                              const heightPercent = maxValue === 0 ? 0 : (value / maxValue) * 100;
+                              const segmentTitle = `${seriesConfig[key].name}: ${formatNumber(value)}`;
+                              
+                              return (
+                                <div
+                                  key={key}
+                                  title={segmentTitle}
+                                  className="transition-all"
+                                  style={{
+                                    height: hiddenSeries.has(key) ? 0 : `${heightPercent}%`,
+                                    backgroundColor: seriesConfig[key].color,
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                          <div className="h-6 flex-shrink-0 text-xs text-slate-700 text-center truncate pt-1">
+                            {record[nameKey]}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )} 
+        {/* ⭐️ นี่คือจุดแก้ไข (Fullscreen Fix) - ลบ div ปิด ที่ซ่อนเนื้อหาตอน Fullscreen ออก ⭐️ */}
       </div>
 
       <div className={`p-4 bg-white rounded-xl shadow-sm th-font mt-6 ${isFullscreen || isPrintLayout ? 'hidden' : ''}`}>
@@ -1001,11 +1004,10 @@ const AiSpatialPage: React.FC = () => {
             className="bg-white shadow-2xl flex flex-col relative"
             style={{ width: paperSize.width, height: paperSize.height }}
           >
-            {/* ⭐️ นี่คือจุดที่แก้ไขตำแหน่งปุ่ม ⭐️ */}
             <button 
               onClick={handlePrintToPDF}
               disabled={isPrinting}
-              className="absolute top-5 -right-3 z-50 bg-emerald-600 text-white rounded-full p-1.5 shadow-lg hover:bg-emerald-700 disabled:opacity-50"
+              className="absolute top-7 -right-3 z-50 bg-emerald-600 text-white rounded-full p-1.5 shadow-lg hover:bg-emerald-700 disabled:opacity-50 no-print"
               title="พิมพ์ (Export to PDF)"
             >
               {isPrinting ? (
@@ -1017,7 +1019,7 @@ const AiSpatialPage: React.FC = () => {
             
             <button 
               onClick={togglePrintLayout} 
-              className="absolute -top-3 -right-3 z-50 bg-red-600 text-white rounded-full p-1.5 shadow-lg hover:bg-red-700"
+              className="absolute -top-3 -right-3 z-50 bg-red-600 text-white rounded-full p-1.5 shadow-lg hover:bg-red-700 no-print"
               title="ปิดโหมดพิมพ์"
             >
               <X size={18} />
@@ -1101,6 +1103,7 @@ const AiSpatialPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex-shrink-0 w-40 bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-lg h-full overflow-y-auto space-y-1">
+                    {/* ⭐️ นี่คือจุดที่แก้ไข เอา `}` ที่เกินมาออก ⭐️ */}
                     {Object.entries(seriesConfig).map(([key, { name, color }]) => (
                       <div
                         key={key}
