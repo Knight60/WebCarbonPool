@@ -2,11 +2,18 @@
 import express from 'express';
 import multer from 'multer';
 import { VertexAI } from '@google-cloud/vertexai';
+import cors from 'cors'; // ❗️ Import cors
 
 // --- 1. การตั้งค่า Express และ Multer ---
 const app = express();
 const port = process.env.PORT || 3000;
 const upload = multer({ storage: multer.memoryStorage() });
+
+// --- ❗️❗️ เปิดใช้งาน CORS ---
+// This is critical so your React app (running on a different port) 
+// can call this server.
+app.use(cors()); 
+// -----------------------------
 
 // --- 2. การตั้งค่า Vertex AI Client ---
 const PROJECT_ID = 'DCCE-Carbon'; // 👈 ❗️❗️ ใส่ ID โปรเจกต์ที่ถูกต้อง
@@ -15,7 +22,7 @@ const model = 'gemini-1.0-pro-vision';
 
 // --- ❗️❗️ ส่วนที่แก้ไข ❗️❗️ ---
 // บอกให้โค้ดหาไฟล์ Key จาก Path ที่เรากำหนดโดยตรง
-const KEY_FILE_PATH = 'dcce-carbon-00bd6aa74b85.json'; // 👈 ❗️❗️ ชื่อไฟล์ Key
+const KEY_FILE_PATH = 'dcce-carbon-credential.json'; // 👈 ❗️❗️ ชื่อไฟล์ Key
 // ------------------------------------
 
 // Initialize VertexAI
@@ -37,7 +44,6 @@ app.post('/predict-gemini', upload.single('image'), async (req, res) => {
   }
 
   try {
-    // ... (ส่วนที่เหลือของโค้ดเหมือนเดิม) ...
     const imageBuffer = req.file.buffer;
     const imageBase64 = imageBuffer.toString('base64');
     const imagePart = {

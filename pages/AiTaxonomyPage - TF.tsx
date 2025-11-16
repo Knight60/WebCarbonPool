@@ -1,14 +1,20 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { UploadIcon, CameraIcon } from '../components/icons';
 
-// Interface for the result we'll display
+interface HistoryItem {
+  source: string;
+  filename: string;
+  commonName: string;
+  predicted: [string, string];
+}
+
 interface IdentificationResult {
   commonName: string;
   scientificName: string;
   description: string;
 }
 
-// --- START: Supported Species Data (Kept for UI display) ---
+// --- START: Supported Species Data (คงไว้เหมือนเดิม) ---
 const supportedSpecies = [
     { common: "(1) แสมขาว", scientific: "Avicennia alba Blume" },
     { common: "(2) อโศกอินเดีย", scientific: "Monoon longifolium (Sonn.) B.Xue & R.M.K.Saunders" },
@@ -73,7 +79,7 @@ const supportedSpecies = [
 ];
 // --- END: Supported Species Data ---
 
-// --- START: File Conversion Function (Unchanged) ---
+// --- START: File Conversion Function (คงไว้เหมือนเดิม) ---
 const convertFileToJpg = (file: File): Promise<File> => {
   return new Promise((resolve, reject) => {
     if (file.type === 'image/jpeg') {
@@ -130,7 +136,12 @@ const AiTaxonomyPage: React.FC = () => {
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Removed sessionToken and history states, they are not needed for the new Gemini endpoint
+  const [sessionToken, setSessionToken] = useState<string>('New');
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  // --- START: ‼️ ลบ useEffect ที่บังคับ URL ออกแล้ว ‼️ ---
+  // (โค้ด useEffect ที่ใช้ window.history.pushState ถูกลบออกจากตรงนี้)
+  // --- END: แก้ไข ---
 
   const handleFileSelect = async (file: File | null | undefined) => {
     if (!file) return;
@@ -190,23 +201,24 @@ const AiTaxonomyPage: React.FC = () => {
     setError(null);
     setResult(null);
 
-    // Create FormData for the new /predict-gemini endpoint
-    // It only needs the 'image' field
     const formData = new FormData();
+    formData.append('token', sessionToken);
+    formData.append('email', 'pisut.nak@gmail.com');
+    formData.append('type', 'null');
     formData.append('image', image);
 
-    // Fetch options for the new endpoint
-    // No complex headers needed for a FormData POST to a local server
     const fetchOptions: RequestInit = {
       method: 'POST',
+      headers: {
+        'Accept': '*/*',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Referer': 'https://aigreen.dcce.go.th/ai-taxonomy.html'
+      },
       body: formData,
     };
 
     try {
-      // --- ‼️ MAIN CHANGE ‼️ ---
-      // Point to your new local Vertex AI backend
-      const response = await fetch('http://localhost:3000/predict-gemini', fetchOptions);
-      // --------------------------
+      const response = await fetch('https://aigreen.dcce.go.th/ai/taxonomy/New', fetchOptions);
 
       if (!response.ok) {
         throw new Error(`Server error: ${response.status} ${response.statusText}`);
@@ -214,22 +226,41 @@ const AiTaxonomyPage: React.FC = () => {
 
       const data = await response.json();
 
-      if (!data.treeName) {
-        throw new Error('ไม่พบผลลัพธ์การทำนาย (treeName) จากเซิร์ฟเวอร์');
+      if (!data.predicted || data.predicted.length === 0) {
+        throw new Error('ไม่พบผลลัพธ์การทำนายจากเซิร์ฟเวอร์');
       }
 
-      // The new backend returns a single string 'treeName'
-      // We will display this string directly.
-      
-      // We can try to make the result look good in the old UI
-      // Let's use the Gemini response as the main description.
+      setSessionToken(data.token);
+
+      const topPrediction = data.predicted[0];
+      const scientificNameFromApi = topPrediction[0];
+      const confidence = topPrediction[1];
+      const source = data.source; 
+      const filename = data.filename;
+
+      const matchingSpecies = supportedSpecies.find(
+        (species) => species.scientific.startsWith(scientificNameFromApi)
+      );
+      const commonName = matchingSpecies 
+        ? matchingSpecies.common.replace(/\(\d+\)\s/, '') 
+        : "ไม่พบชื่อในลิสต์ 60 ชนิด";
+
+      setHistory(prevHistory => [
+        ...prevHistory,
+        {
+          source: source,
+          filename: filename,
+          commonName: commonName, 
+          predicted: [scientificNameFromApi, confidence]
+        }
+      ]);
+
       setResult({
-        commonName: "ผลลัพธ์จาก Gemini",
-        scientificName: "AI-Generated Identification",
-        description: data.treeName, // This is the raw text from Gemini
+        commonName: commonName,
+        scientificName: matchingSpecies ? matchingSpecies.scientific : scientificNameFromApi,
+        description: `ความมั่นใจ: ${confidence}`
       });
 
-      // Clear the file input after successful submission
       clearSubmittedFile();
 
     } catch (err) {
@@ -244,7 +275,17 @@ const AiTaxonomyPage: React.FC = () => {
     }
   };
 
-  // Removed handleResetSession as history/session logic is gone
+  const handleResetSession = () => {
+    setImage(null);
+    setPreviewUrl(null);
+    setError(null);
+    setResult(null);
+    setSessionToken('New');
+    setHistory([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="space-y-6 th-font max-w-4xl mx-auto">
@@ -313,8 +354,7 @@ const AiTaxonomyPage: React.FC = () => {
               disabled={!image || isLoading}
               className="w-full px-4 py-3 bg-emerald-500 text-white rounded-lg shadow-sm hover:bg-emerald-600 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed font-bold text-lg"
             >
-              {/* Simplified button text as session logic is removed */}
-              {isLoading ? 'กำลังประมวลผล...' : 'ระบุชนิดพันธุ์ไม้'}
+              {isLoading ? 'กำลังประมวลผล...' : (sessionToken === 'New' ? 'ระบุชนิดพันธุ์ไม้' : 'ส่งภาพเพิ่มเติม')}
             </button>
           </div>
 
@@ -336,13 +376,13 @@ const AiTaxonomyPage: React.FC = () => {
                     <p className="text-2xl font-bold text-emerald-600">{result.commonName}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-500">ประเภท</h3>
+                    <h3 className="text-sm font-semibold text-slate-500">ชื่อวิทยาศาสตร์</h3>
                     <p className="text-lg font-medium text-slate-800 italic">{result.scientificName}</p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-500">รายละเอียดจาก AI</h3>
-                    {/* Use pre-wrap to respect newlines from Gemini's response */}
-                    <p className="text-base text-slate-700 leading-relaxed whitespace-pre-wrap">{result.description}</p>
+                    <h3 className="text-sm font-semibold text-slate-500">รายละเอียด</h3>
+                    <p className="text-base text-slate-700 leading-relaxed">{result.description}</p>
+
                   </div>
                 </div>
               )}
@@ -353,8 +393,33 @@ const AiTaxonomyPage: React.FC = () => {
               )}
             </div>
 
-            {/* History section has been removed as the new backend doesn't support session history */}
-            
+            {history.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-slate-300">
+                <h3 className="text-lg font-bold text-slate-800 mb-3">
+                  ประวัติการส่งภาพ ({history.length} ภาพ)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {[...history].reverse().map((item, index) => (
+                    <div key={index} className="border rounded-lg overflow-hidden shadow-sm bg-white">
+                      <img src={item.source} alt={item.commonName} className="w-full h-24 object-cover" />
+                      <div className="p-2 text-xs">
+                        <p className="font-semibold truncate" title={item.commonName}>{item.commonName}</p>
+                        <p className="text-slate-600 truncate" title={item.predicted[0]}>{item.predicted[0]}</p>
+                        <p className="text-slate-500">{item.predicted[1]}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={handleResetSession}
+                  className="mt-4 w-full px-4 py-2 bg-slate-500 text-white rounded-lg shadow-sm hover:bg-slate-600 transition-colors font-semibold text-sm"
+                >
+                  เริ่มการจำแนกต้นใหม่ (ล้างประวัติ)
+                </button>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
@@ -363,9 +428,6 @@ const AiTaxonomyPage: React.FC = () => {
         <h2 className="text-2xl font-bold text-slate-800 mb-4">
           ชนิดพันธุ์ที่รองรับ (60 ชนิด)
         </h2>
-        <p className="text-sm text-slate-600 mb-4">
-          (หมายเหตุ: รายการนี้เป็นของระบบเดิม Gemini AI สามารถพยายามระบุพันธุ์ไม้นอกเหนือจากรายการนี้ได้)
-        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
           {supportedSpecies.map((species) => (
             <div key={species.scientific}>
