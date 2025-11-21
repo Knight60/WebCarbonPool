@@ -1,19 +1,18 @@
 import React, { useState, useRef } from 'react';
 import { UploadIcon, CameraIcon } from '../components/icons';
 
-// --- Interface สำหรับ Response จาก VertexAiTaxonomy.js ---
+// --- Interface สำหรับ Response ---
 interface TaxonomyResponse {
   filename?: string;
   token: string;
   source?: string;
-  predicted?: [string, string][]; // [ScientificName, Score]
-  overall?: [string, string][];    // [ScientificName, Score]
+  predicted?: any[]; 
+  overall?: any[];    
   count?: number;
   error?: string;
   details?: string;
 }
 
-// --- Interface สำหรับเก็บประวัติ (History) ---
 interface HistoryItem {
   id: string;
   timestamp: Date;
@@ -21,78 +20,99 @@ interface HistoryItem {
   result: TaxonomyResponse;
 }
 
-// --- START: Supported Species Data ---
+// --- Supported Species Data ---
 const supportedSpecies = [
-    { common: "(1) แสมขาว", scientific: "Avicennia alba Blume" },
-    { common: "(2) อโศกอินเดีย", scientific: "Monoon longifolium (Sonn.) B.Xue & R.M.K.Saunders" },
-    { common: "(3) ลำดวน", scientific: "Sphaerocoryne lefevrei (Baill.) D.M.Johnson & N.A.Murray" },
-    { common: "(4) สัตตบรรณ", scientific: "Alstonia scholaris (L.) R.Br." },
-    { common: "(5) ตีนเป็ดทะเล", scientific: "Cerbera odollam Gaertn." },
-    { common: "(6) โมกมัน", scientific: "Wrightia arborea (Dennst.) Mabb." },
-    { common: "(7) แคนา", scientific: "Dolichandrone serrulata (Wall. ex DC.) Seem." },
-    { common: "(8) ปีบ", scientific: "Millingtonia hortensis L.f." },
-    { common: "(9) ชมพูพันธุ์ทิพย์", scientific: "Tabebuia rosea (Bertol.) DC." },
-    { common: "(10) กระทิง", scientific: "Calophyllum inophyllum L." },
-    { common: "(11) สารภี", scientific: "Mammea siamensis (Miq.) T.Anderson" },
-    { common: "(12) สนทะเล", scientific: "Casuarina equisetifolia L." },
-    { common: "(13) สมอพิเภก", scientific: "Terminalia bellirica (Gaertn.) Roxb." },
-    { common: "(14) หูกวาง", scientific: "Terminalia catappa L." },
-    { common: "(15) หูกระจง", scientific: "Terminalia ivorensis A.Chev." },
-    { common: "(16) พะยอม", scientific: "Anthoshorea roxburghii (G.Don) P.S.Ashton & J.Heck." },
-    { common: "(17) ยางนา", scientific: "Dipterocarpus alatus Roxb. ex G.Don" },
-    { common: "(18) ตะเคียนทอง", scientific: "Hopea odorata Roxb." },
-    { common: "(19) รัง", scientific: "Pentacme siamensis (Miq.) Kurz" },
-    { common: "(20) เต็ง", scientific: "Shorea obtusa Wall. ex Blume" },
-    { common: "(21) ยางพารา", scientific: "Hevea brasiliensis (Willd. ex A.Juss.) Müll.Arg." },
-    { common: "(22) กระถินณรงค์", scientific: "Acacia auriculiformis A.Cunn. ex Benth." },
-    { common: "(23) กระถินเทพา", scientific: "Acacia mangium Willd." },
-    { common: "(24) มะค่าโมง", scientific: "Afzelia xylocarpa (Kurz) Craib" },
-    { common: "(25) พฤกษ์", scientific: "Albizia lebbeck (L.) Benth." },
-    { common: "(26) ทองกวาว", scientific: "Butea monosperma (Lam.) Kuntze" },
-    { common: "(27) กัลปพฤกษ์", scientific: "Cassia bakeriana Craib" },
-    { common: "(28) คูน", scientific: "Cassia fistula L." },
-    { common: "(29) พะยูง", scientific: "Dalbergia cochinchinensis Pierre" },
-    { common: "(30) ฉนวน", scientific: "Dalbergia nigrescens Kurz" },
-    { common: "(31) หางนกยูงฝรั่ง", scientific: "Delonix regia (Bojer ex Hook.) Raf." },
-    { common: "(32) เขลง", scientific: "Dialium cochinchinense Pierre" },
-    { common: "(33) อะราง", scientific: "Peltophorum dasyrhachis (Miq.) Kurz" },
-    { common: "(34) นนทรี", scientific: "Peltophorum pterocarpum (DC.) Backer ex K.Heyne" },
-    { common: "(35) ประดู่บ้าน", scientific: "Pterocarpus indicus Willd." },
-    { common: "(36) ประดู่ป่า", scientific: "Pterocarpus macrocarpus Kurz" },
-    { common: "(37) จามจุรี", scientific: "Samanea saman (Jacq.) Merr." },
-    { common: "(38) ขี้เหล็ก", scientific: "Senna siamea (Lam.) H.S.Irwin & Barneby" },
-    { common: "(39) มะค่าแต้", scientific: "Sindora siamensis Teijsm. ex Miq." },
-    { common: "(40) มะขาม", scientific: "Tamarindus indica L." },
-    { common: "(41) แดง", scientific: "Xylia xylocarpa var. kerrii (Craib & Hutch.) I.C.Nielsen" },
-    { common: "(42) สัก", scientific: "Tectona grandis L.f." },
-    { common: "(43) จิกน้ำ", scientific: "Barringtonia acutangula (L.) Gaertn." },
-    { common: "(44) กระโดน", scientific: "Careya arborea Roxb." },
-    { common: "(45) ตะแบกนา", scientific: "Lagerstroemia floribunda Jack" },
-    { common: "(46) อินทรชิต", scientific: "Lagerstroemia loudonii Teijsm. & Binn." },
-    { common: "(47) อินทนิลน้ำ", scientific: "Lagerstroemia speciosa (L.) Pers." },
-    { common: "(48) จำปี", scientific: "Magnolia × alba (DC.) Figlar" },
-    { common: "(49) สะเดา", scientific: "Azadirachta indica A.Juss." },
-    { common: "(50) มะฮอกกานีใบใหญ่", scientific: "Swietenia macrophylla King" },
-    { common: "(51) ขนุน", scientific: "Artocarpus heterophyllus Lam." },
-    { common: "(52) ไทรย้อยใบแหลม", scientific: "Ficus benjamina L." },
-    { common: "(53) โพศรีมหาโพ", scientific: "Ficus religiosa L." },
-    { common: "(54) โพขี้นก", scientific: "Ficus rumphii Blume" },
-    { common: "(55) ข่อย", scientific: "Streblus asper Lour." },
-    { common: "(56) หว้า", scientific: "Syzygium cumini (L.) Skeels" },
-    { common: "(57) โกงกางใบเล็ก", scientific: "Rhizophora apiculata Blume" },
-    { common: "(58) โกงกางใบใหญ่", scientific: "Rhizophora mucronata Poir." },
-    { common: "(59) คำมอกหลวง", scientific: "Gardenia sootepensis Hutch." },
-    { common: "(60) พิกุล", scientific: "Mimusops elengi L." },
+    { common: "แสมขาว", scientific: "Avicennia alba Blume" },
+    { common: "อโศกอินเดีย", scientific: "Monoon longifolium (Sonn.) B.Xue & R.M.K.Saunders" },
+    { common: "ลำดวน", scientific: "Sphaerocoryne lefevrei (Baill.) D.M.Johnson & N.A.Murray" },
+    { common: "สัตตบรรณ", scientific: "Alstonia scholaris (L.) R.Br." },
+    { common: "ตีนเป็ดทะเล", scientific: "Cerbera odollam Gaertn." },
+    { common: "โมกมัน", scientific: "Wrightia arborea (Dennst.) Mabb." },
+    { common: "แคนา", scientific: "Dolichandrone serrulata (Wall. ex DC.) Seem." },
+    { common: "ปีบ", scientific: "Millingtonia hortensis L.f." },
+    { common: "ชมพูพันธุ์ทิพย์", scientific: "Tabebuia rosea (Bertol.) DC." },
+    { common: "กระทิง", scientific: "Calophyllum inophyllum L." },
+    { common: "สารภี", scientific: "Mammea siamensis (Miq.) T.Anderson" },
+    { common: "สนทะเล", scientific: "Casuarina equisetifolia L." },
+    { common: "สมอพิเภก", scientific: "Terminalia bellirica (Gaertn.) Roxb." },
+    { common: "หูกวาง", scientific: "Terminalia catappa L." },
+    { common: "หูกระจง", scientific: "Terminalia ivorensis A.Chev." },
+    { common: "พะยอม", scientific: "Anthoshorea roxburghii (G.Don) P.S.Ashton & J.Heck." },
+    { common: "ยางนา", scientific: "Dipterocarpus alatus Roxb. ex G.Don" },
+    { common: "ตะเคียนทอง", scientific: "Hopea odorata Roxb." },
+    { common: "รัง", scientific: "Pentacme siamensis (Miq.) Kurz" },
+    { common: "เต็ง", scientific: "Shorea obtusa Wall. ex Blume" },
+    { common: "ยางพารา", scientific: "Hevea brasiliensis (Willd. ex A.Juss.) Müll.Arg." },
+    { common: "กระถินณรงค์", scientific: "Acacia auriculiformis A.Cunn. ex Benth." },
+    { common: "กระถินเทพา", scientific: "Acacia mangium Willd." },
+    { common: "มะค่าโมง", scientific: "Afzelia xylocarpa (Kurz) Craib" },
+    { common: "พฤกษ์", scientific: "Albizia lebbeck (L.) Benth." },
+    { common: "ทองกวาว", scientific: "Butea monosperma (Lam.) Kuntze" },
+    { common: "กัลปพฤกษ์", scientific: "Cassia bakeriana Craib" },
+    { common: "คูน", scientific: "Cassia fistula L." },
+    { common: "พะยูง", scientific: "Dalbergia cochinchinensis Pierre" },
+    { common: "ฉนวน", scientific: "Dalbergia nigrescens Kurz" },
+    { common: "หางนกยูงฝรั่ง", scientific: "Delonix regia (Bojer ex Hook.) Raf." },
+    { common: "เขลง", scientific: "Dialium cochinchinense Pierre" },
+    { common: "อะราง", scientific: "Peltophorum dasyrhachis (Miq.) Kurz" },
+    { common: "นนทรี", scientific: "Peltophorum pterocarpum (DC.) Backer ex K.Heyne" },
+    { common: "ประดู่บ้าน", scientific: "Pterocarpus indicus Willd." },
+    { common: "ประดู่ป่า", scientific: "Pterocarpus macrocarpus Kurz" },
+    { common: "จามจุรี", scientific: "Samanea saman (Jacq.) Merr." },
+    { common: "ขี้เหล็ก", scientific: "Senna siamea (Lam.) H.S.Irwin & Barneby" },
+    { common: "มะค่าแต้", scientific: "Sindora siamensis Teijsm. ex Miq." },
+    { common: "มะขาม", scientific: "Tamarindus indica L." },
+    { common: "แดง", scientific: "Xylia xylocarpa var. kerrii (Craib & Hutch.) I.C.Nielsen" },
+    { common: "สัก", scientific: "Tectona grandis L.f." },
+    { common: "จิกน้ำ", scientific: "Barringtonia acutangula (L.) Gaertn." },
+    { common: "กระโดน", scientific: "Careya arborea Roxb." },
+    { common: "ตะแบกนา", scientific: "Lagerstroemia floribunda Jack" },
+    { common: "อินทรชิต", scientific: "Lagerstroemia loudonii Teijsm. & Binn." },
+    { common: "อินทนิลน้ำ", scientific: "Lagerstroemia speciosa (L.) Pers." },
+    { common: "จำปี", scientific: "Magnolia × alba (DC.) Figlar" },
+    { common: "สะเดา", scientific: "Azadirachta indica A.Juss." },
+    { "common": "มะฮอกกานีใบใหญ่", "scientific": "Swietenia macrophylla King" },
+    { "common": "ขนุน", "scientific": "Artocarpus heterophyllus Lam." },
+    { "common": "ไทรย้อยใบแหลม", "scientific": "Ficus benjamina L." },
+    { "common": "โพศรีมหาโพ", "scientific": "Ficus religiosa L." },
+    { "common": "โพขี้นก", "scientific": "Ficus rumphii Blume" },
+    { "common": "ข่อย", "scientific": "Streblus asper Lour." },
+    { "common": "หว้า", "scientific": "Syzygium cumini (L.) Skeels" },
+    { "common": "โกงกางใบเล็ก", "scientific": "Rhizophora apiculata Blume" },
+    { "common": "โกงกางใบใหญ่", "scientific": "Rhizophora mucronata Poir." },
+    { "common": "คำมอกหลวง", "scientific": "Gardenia sootepensis Hutch." },
+    { "common": "พิกุล", "scientific": "Mimusops elengi L." },
 ];
-// --- END: Supported Species Data ---
 
-// Helper function to match scientific name to Thai common name
+// --- Helper Functions ---
 const getThaiName = (sciName: string) => {
+    if (!sciName) return "";
     const found = supportedSpecies.find(s => s.scientific.toLowerCase() === sciName.toLowerCase());
-    return found ? found.common : sciName;
+    const name = found ? found.common : sciName;
+    return name.replace(/^\(\d+\)\s*/, ''); 
 };
 
-// --- START: File Conversion Function ---
+const normalizeResult = (item: any[]) => {
+    let score = "0";
+    let sciName = "Unknown";
+    let thaiName = "ไม่ระบุ";
+
+    if (!item || item.length < 2) return { score, sciName, thaiName };
+
+    if (!isNaN(parseFloat(item[0])) && parseFloat(item[0]) <= 1.0) {
+        score = item[0];
+        sciName = item[1];
+        thaiName = item[2] || getThaiName(sciName);
+    } 
+    else {
+        sciName = item[0];
+        score = item[1];
+        thaiName = getThaiName(sciName);
+    }
+
+    return { score, sciName, thaiName };
+};
+
 const convertFileToJpg = (file: File): Promise<File> => {
   return new Promise((resolve, reject) => {
     if (file.type === 'image/jpeg') {
@@ -138,7 +158,6 @@ const convertFileToJpg = (file: File): Promise<File> => {
     reader.onerror = (error) => reject(error);
   });
 };
-// --- END: File Conversion Function ---
 
 
 const AiTaxonomyPage: React.FC = () => {
@@ -147,11 +166,8 @@ const AiTaxonomyPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
-  // State for VertexAiTaxonomy Logic
   const [token, setToken] = useState<string>('new'); 
   const [apiResult, setApiResult] = useState<TaxonomyResponse | null>(null);
-  
-  // State for History
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -194,9 +210,8 @@ const AiTaxonomyPage: React.FC = () => {
   const handleResetSession = () => {
     setToken('new');
     setApiResult(null);
-    setHistory([]); // Clear history
+    setHistory([]); 
     handleRemoveFile();
-    // alert('รีเซ็ตเซสชันเรียบร้อย เริ่มต้นการจำแนกชุดใหม่');
   };
 
   const triggerFileInput = () => {
@@ -225,8 +240,13 @@ const AiTaxonomyPage: React.FC = () => {
     formData.append('type', 'bark'); 
 
     try {
-      const url = `/ai/taxonomy/${token}`;
-      //const url = `http://localhost:8888/ai/taxonomy/${token}`;
+      // ❗️❗️ ตรวจสอบ Hostname เพื่อเลือก URL
+      const hostname = window.location.hostname;
+      const isLocalDev = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+      
+      const url = isLocalDev 
+        ? `http://localhost:8888/ai/taxonomy/${token}` 
+        : `/ai/taxonomy/${token}`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -248,7 +268,6 @@ const AiTaxonomyPage: React.FC = () => {
       } else {
         setApiResult(data);
         
-        // ❗️ UPDATE HISTORY Logic
         if (previewUrl) {
             const newItem: HistoryItem = {
                 id: Date.now().toString(),
@@ -256,7 +275,6 @@ const AiTaxonomyPage: React.FC = () => {
                 imageUrl: previewUrl,
                 result: data
             };
-            // Add new item to the beginning of the array
             setHistory(prev => [newItem, ...prev]);
         }
 
@@ -384,27 +402,30 @@ const AiTaxonomyPage: React.FC = () => {
               {apiResult && !isLoading && !error && (
                 <div className="space-y-6 animate-in fade-in duration-500">
                   
-                    {/* --- 1. ผลการทำนายรูปล่าสุด --- */}
+                    {/* --- 1. ผลการทำนายรูปล่าสุด (Predicted) --- */}
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-emerald-100">
                         <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3 border-b pb-2">
                             ผลวิเคราะห์รูปล่าสุด
                         </h3>
                         <ul className="space-y-3">
-                            {apiResult.predicted?.slice(0, 3).map(([sciName, score], idx) => (
-                                <li key={idx} className="flex justify-between items-center">
-                                    <div className="overflow-hidden">
-                                        <div className="font-bold text-slate-800 truncate">{getThaiName(sciName)}</div>
-                                        <div className="text-xs text-slate-500 italic truncate">{sciName}</div>
-                                    </div>
-                                    <span className={`text-xs font-bold px-2 py-1 rounded-full ml-2 ${idx === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
-                                        {(parseFloat(score) * 100).toFixed(0)}%
-                                    </span>
-                                </li>
-                            ))}
+                            {apiResult.predicted?.slice(0, 3).map((item, idx) => {
+                                const { score, sciName, thaiName } = normalizeResult(item);
+                                return (
+                                    <li key={idx} className="flex justify-between items-center">
+                                        <div className="overflow-hidden">
+                                            <div className="font-bold text-slate-800 truncate">{thaiName}</div>
+                                            <div className="text-xs text-slate-500 italic truncate">{sciName}</div>
+                                        </div>
+                                        <span className={`text-xs font-bold px-2 py-1 rounded-full ml-2 ${idx === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                                            {(parseFloat(score) * 100).toFixed(0)}%
+                                        </span>
+                                    </li>
+                                );
+                            })}
                         </ul>
                     </div>
 
-                    {/* --- 2. ผลรวม (Overall) --- */}
+                    {/* --- 2. ผลรวมสะสม (Overall) --- */}
                     <div className="bg-gradient-to-br from-slate-100 to-white p-4 rounded-lg shadow-inner border border-slate-200">
                         <div className="flex justify-between items-center mb-3 border-b border-slate-300 pb-2">
                             <h3 className="text-sm font-bold text-slate-600 uppercase tracking-wider">
@@ -413,20 +434,24 @@ const AiTaxonomyPage: React.FC = () => {
                         </div>
                         
                         <ul className="space-y-3">
-                             {apiResult.overall?.slice(0, 3).map(([sciName, score], idx) => (
-                                <li key={idx} className="relative">
-                                    <div className="flex justify-between items-center z-10 relative mb-1">
-                                        <span className="font-semibold text-slate-800 text-sm truncate pr-2">{getThaiName(sciName)}</span>
-                                        <span className="text-slate-600 text-sm font-bold">{(parseFloat(score) * 100).toFixed(1)}%</span>
-                                    </div>
-                                    <div className="w-full bg-slate-200 rounded-full h-2">
-                                        <div 
-                                            className={`h-2 rounded-full ${idx === 0 ? 'bg-blue-500' : 'bg-slate-400'}`} 
-                                            style={{ width: `${parseFloat(score) * 100}%` }}
-                                        ></div>
-                                    </div>
-                                </li>
-                            ))}
+                             {apiResult.overall?.slice(0, 3).map((item, idx) => {
+                                 const { score, sciName, thaiName } = normalizeResult(item);
+                                 return (
+                                    <li key={idx} className="relative">
+                                        <div className="flex justify-between items-center z-10 relative mb-1">
+                                            <span className="font-semibold text-slate-800 text-sm truncate pr-2">{thaiName}</span>
+                                            <span className="text-slate-600 text-sm font-bold">{(parseFloat(score) * 100).toFixed(1)}%</span>
+                                        </div>
+                                        <div className="w-full bg-slate-200 rounded-full h-2">
+                                            <div 
+                                                className={`h-2 rounded-full ${idx === 0 ? 'bg-blue-500' : 'bg-slate-400'}`} 
+                                                style={{ width: `${parseFloat(score) * 100}%` }}
+                                            ></div>
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 text-right mt-0.5">{sciName}</div>
+                                    </li>
+                                );
+                            })}
                         </ul>
                     </div>
 
@@ -453,45 +478,45 @@ const AiTaxonomyPage: React.FC = () => {
                 <h2 className="text-xl font-bold text-slate-800">
                     ประวัติการส่งภาพ ({history.length} ภาพ)
                 </h2>
-                {/* ปุ่มล้างประวัติถูกลบออกแล้ว */}
              </div>
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {history.map((item) => (
-                    <div key={item.id} className="border rounded-lg overflow-hidden shadow-sm bg-white flex flex-col">
-                        {/* Image Thumbnail */}
-                        <div className="h-32 w-full bg-slate-100">
-                             <img src={item.imageUrl} alt="History" className="w-full h-full object-cover" />
-                        </div>
-                        
-                        {/* Result Info */}
-                        <div className="p-2 text-xs flex-grow">
-                            <div className="flex justify-between items-start mb-1">
-                                <span className="text-[10px] text-slate-400">
-                                    {item.timestamp.toLocaleTimeString('th-TH')}
-                                </span>
+                {history.map((item) => {
+                    const topItem = (item.result.predicted && item.result.predicted.length > 0) ? item.result.predicted[0] : [];
+                    const { score, sciName, thaiName } = normalizeResult(topItem);
+
+                    return (
+                        <div key={item.id} className="border rounded-lg overflow-hidden shadow-sm bg-white flex flex-col">
+                            {/* Image Thumbnail */}
+                            <div className="h-32 w-full bg-slate-100">
+                                <img src={item.imageUrl} alt="History" className="w-full h-full object-cover" />
                             </div>
                             
-                            {item.result.predicted && item.result.predicted.length > 0 ? (
+                            {/* Result Info */}
+                            <div className="p-2 text-xs flex-grow">
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className="text-[10px] text-slate-400">
+                                        {item.timestamp.toLocaleTimeString('th-TH')}
+                                    </span>
+                                </div>
+                                
                                 <div>
-                                    <div className="font-bold text-slate-800 truncate" title={getThaiName(item.result.predicted[0][0])}>
-                                        {getThaiName(item.result.predicted[0][0])}
+                                    <div className="font-bold text-slate-800 truncate" title={thaiName}>
+                                        {thaiName}
                                     </div>
-                                    <div className="text-slate-500 italic truncate mb-1" title={item.result.predicted[0][0]}>
-                                        {item.result.predicted[0][0]}
+                                    <div className="text-slate-500 italic truncate mb-1" title={sciName}>
+                                        {sciName}
                                     </div>
                                     <div className="mt-1">
-                                         <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
-                                            {(parseFloat(item.result.predicted[0][1]) * 100).toFixed(0)}%
-                                         </span>
+                                            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
+                                            {(parseFloat(score) * 100).toFixed(0)}%
+                                            </span>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="text-red-500 text-xs">ไม่สามารถระบุได้</div>
-                            )}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
       )}
