@@ -1,14 +1,19 @@
 import React, { useState, useRef } from 'react';
-import { UploadIcon, CameraIcon } from '../components/icons';
+import { UploadIcon, CameraIcon, RefreshIcon } from '../components/icons'; // สมมติว่ามี RefreshIcon หรือใช้ text แทนได้
 
-// Interface for the result we'll display
-interface IdentificationResult {
-  commonName: string;
-  scientificName: string;
-  description: string;
+// --- Interface สำหรับ Response จาก VertexAiTaxonomy.js ---
+interface TaxonomyResponse {
+  filename?: string;
+  token: string;
+  source?: string;
+  predicted?: [string, string][]; // [ScientificName, Score]
+  overall?: [string, string][];    // [ScientificName, Score]
+  count?: number;
+  error?: string;                 // กรณีไม่ใช่รูปต้นไม้
+  details?: string;
 }
 
-// --- START: Supported Species Data (Kept for UI display) ---
+// --- START: Supported Species Data ---
 const supportedSpecies = [
     { common: "(1) แสมขาว", scientific: "Avicennia alba Blume" },
     { common: "(2) อโศกอินเดีย", scientific: "Monoon longifolium (Sonn.) B.Xue & R.M.K.Saunders" },
@@ -73,6 +78,12 @@ const supportedSpecies = [
 ];
 // --- END: Supported Species Data ---
 
+// Helper function to match scientific name to Thai common name
+const getThaiName = (sciName: string) => {
+    const found = supportedSpecies.find(s => s.scientific.toLowerCase() === sciName.toLowerCase());
+    return found ? found.common : sciName; // ถ้าไม่เจอให้โชว์ชื่อวิทย์
+};
+
 // --- START: File Conversion Function (Unchanged) ---
 const convertFileToJpg = (file: File): Promise<File> => {
   return new Promise((resolve, reject) => {
@@ -127,10 +138,12 @@ const AiTaxonomyPage: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<IdentificationResult | null>(null);
+  
+  // New State Logic for VertexAiTaxonomy
+  const [token, setToken] = useState<string>('new'); // Default to 'new'
+  const [apiResult, setApiResult] = useState<TaxonomyResponse | null>(null);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Removed sessionToken and history states, they are not needed for the new Gemini endpoint
 
   const handleFileSelect = async (file: File | null | undefined) => {
     if (!file) return;
@@ -141,7 +154,10 @@ const AiTaxonomyPage: React.FC = () => {
     }
     setIsLoading(true);
     setError(null);
-    setResult(null); 
+    // Don't clear apiResult immediately if we want to show previous overall stats, 
+    // but usually it's better to clear "current" result perception. 
+    // For now, let's keep previous result visible until new one arrives or error.
+    
     try {
       const jpgFile = await convertFileToJpg(file);
       setImage(jpgFile);
@@ -161,11 +177,17 @@ const AiTaxonomyPage: React.FC = () => {
   const handleRemoveFile = () => {
     setImage(null);
     setPreviewUrl(null);
-    setResult(null);
     setError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const handleResetSession = () => {
+    setToken('new');
+    setApiResult(null);
+    handleRemoveFile();
+    alert('รีเซ็ตเซสชันเรียบร้อย เริ่มต้นการจำแนกชุดใหม่');
   };
 
   const triggerFileInput = () => {
@@ -188,54 +210,46 @@ const AiTaxonomyPage: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
-    setResult(null);
 
-    // Create FormData for the new /predict-gemini endpoint
-    // It only needs the 'image' field
     const formData = new FormData();
     formData.append('image', image);
-
-    // Fetch options for the new endpoint
-    // No complex headers needed for a FormData POST to a local server
-    const fetchOptions: RequestInit = {
-      method: 'POST',
-      body: formData,
-    };
+    formData.append('type', 'bark'); // Default or add UI selector for 'leaf'/'bark'
 
     try {
-      // --- ‼️ MAIN CHANGE ‼️ ---
-      // Point to your new local Vertex AI backend
-      const response = await fetch('http://localhost:3000/predict-gemini', fetchOptions);
-      // --------------------------
-
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (!data.treeName) {
-        throw new Error('ไม่พบผลลัพธ์การทำนาย (treeName) จากเซิร์ฟเวอร์');
-      }
-
-      // The new backend returns a single string 'treeName'
-      // We will display this string directly.
+      // Use the current token (or 'new' if it's the first time)
+      const url = `http://localhost:8888/ai/taxonomy/${token}`;
       
-      // We can try to make the result look good in the old UI
-      // Let's use the Gemini response as the main description.
-      setResult({
-        commonName: "ผลลัพธ์จาก Gemini",
-        scientificName: "AI-Generated Identification",
-        description: data.treeName, // This is the raw text from Gemini
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
       });
 
-      // Clear the file input after successful submission
-      clearSubmittedFile();
+      const data: TaxonomyResponse = await response.json();
+
+      if (!response.ok) {
+        // Handle HTTP errors
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      // Update Token from response (for continuity)
+      if (data.token) {
+        setToken(data.token);
+      }
+
+      // Check for Logic Error (e.g. Not a plant)
+      if (data.error) {
+        setError(data.error); // e.g. "ไม่ใช่รูปของต้นไม้"
+        // Keep the token to allow retry in same session if needed, 
+        // or you might want to force reset.
+      } else {
+        setApiResult(data);
+        clearSubmittedFile();
+      }
 
     } catch (err) {
       console.error(err);
       if (err instanceof Error) {
-        setError(`เกิดข้อผิดพลาดในการระบุพันธุ์ไม้: ${err.message}`);
+        setError(`การเชื่อมต่อขัดข้อง: ${err.message}`);
       } else {
         setError('เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ');
       }
@@ -244,21 +258,24 @@ const AiTaxonomyPage: React.FC = () => {
     }
   };
 
-  // Removed handleResetSession as history/session logic is gone
-
   return (
     <div className="space-y-6 th-font max-w-4xl mx-auto">
-      <div className="text-center">
+      <div className="text-center relative">
         <h1 className="text-3xl font-bold text-slate-800">AI Taxonomy - ระบบจำแนกพันธุ์ไม้</h1>
         <p className="mt-2 text-slate-600">
-          อัปโหลดหรือถ่ายภาพต้นไม้เพื่อให้ AI ช่วยระบุชนิดพันธุ์
+          อัปโหลดภาพ (เปลือกไม้/ใบไม้) เพื่อระบุชนิดพันธุ์ด้วย Gemini AI
         </p>
+        {/* Session Info */}
+        <div className="absolute top-0 right-0 text-xs text-slate-400 hidden md:block">
+             Session: {token === 'new' ? 'New' : token.substring(0, 16)+'...'}
+        </div>
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm">
         <div className="grid md:grid-cols-2 gap-6 items-start">
+          
+          {/* --- LEFT COLUMN: INPUT --- */}
           <div className="space-y-4">
-
             {!previewUrl && (
               <div 
                 className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
@@ -277,13 +294,13 @@ const AiTaxonomyPage: React.FC = () => {
 
             {previewUrl && (
               <div className="mt-4 space-y-3">
-                <h3 className="font-semibold mb-2">ภาพตัวอย่าง:</h3>
+                <h3 className="font-semibold mb-2">ภาพที่จะส่งตรวจสอบ:</h3>
                 <img src={previewUrl} alt="Preview" className="rounded-lg w-full h-auto object-cover shadow-md" />
                 <button
                   onClick={handleRemoveFile}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg shadow-sm hover:bg-red-600 transition-colors font-semibold"
+                  className="w-full px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-semibold"
                 >
-                  ลบไฟล์นี้
+                  ยกเลิกรูปนี้
                 </button>
               </div>
             )}
@@ -303,58 +320,120 @@ const AiTaxonomyPage: React.FC = () => {
               capture="environment"
               id="camera-input"
             />
-            <label htmlFor="camera-input" className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg shadow-sm hover:bg-emerald-700 transition-colors cursor-pointer font-semibold">
-              <CameraIcon className="h-5 w-5" />
-              ถ่ายภาพจากกล้อง
-            </label>
+            
+            <div className="grid grid-cols-2 gap-2">
+                <label htmlFor="camera-input" className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-lg shadow-sm hover:bg-emerald-700 transition-colors cursor-pointer font-semibold text-sm">
+                <CameraIcon className="h-5 w-5" />
+                ถ่ายภาพ
+                </label>
+                <button 
+                    onClick={handleResetSession}
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-semibold text-sm"
+                >
+                    เริ่มใหม่ (Reset)
+                </button>
+            </div>
             
             <button
               onClick={handleSubmit}
               disabled={!image || isLoading}
               className="w-full px-4 py-3 bg-emerald-500 text-white rounded-lg shadow-sm hover:bg-emerald-600 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed font-bold text-lg"
             >
-              {/* Simplified button text as session logic is removed */}
-              {isLoading ? 'กำลังประมวลผล...' : 'ระบุชนิดพันธุ์ไม้'}
+              {isLoading ? 'กำลังประมวลผล...' : 'ส่งตรวจสอบ (Identify)'}
             </button>
           </div>
 
+          {/* --- RIGHT COLUMN: RESULT --- */}
           <div className="bg-slate-50 p-6 rounded-lg min-h-[300px] flex flex-col">
-            
             <div className="flex-grow min-h-[150px] flex flex-col justify-center">
+              
+              {/* Loading State */}
               {isLoading && (
                 <div className="space-y-4 animate-pulse">
-                  <div className="h-6 bg-slate-300 rounded w-3-4"></div>
-                  <div className="h-4 bg-slate-300 rounded w-1/2"></div>
-                  <div className="h-4 bg-slate-300 rounded w-full"></div>
+                  <div className="h-6 bg-slate-300 rounded w-3/4 mx-auto"></div>
+                  <div className="h-32 bg-slate-200 rounded w-full"></div>
+                  <div className="h-4 bg-slate-300 rounded w-1/2 mx-auto"></div>
                 </div>
               )}
-              {error && <p className="text-red-600 text-center">{error}</p>}
-              {result && !isLoading && (
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-500">ผลลัพธ์ล่าสุด</h3>
-                    <p className="text-2xl font-bold text-emerald-600">{result.commonName}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-500">ประเภท</h3>
-                    <p className="text-lg font-medium text-slate-800 italic">{result.scientificName}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-500">รายละเอียดจาก AI</h3>
-                    {/* Use pre-wrap to respect newlines from Gemini's response */}
-                    <p className="text-base text-slate-700 leading-relaxed whitespace-pre-wrap">{result.description}</p>
-                  </div>
+
+              {/* Error State */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+                    <strong className="font-bold">แจ้งเตือน: </strong>
+                    <span className="block sm:inline">{error}</span>
                 </div>
               )}
-              {!isLoading && !error && !result && (
-                <div className="text-center text-slate-500">
-                  <p>ผลลัพธ์การระบุชนิดพันธุ์ไม้จะแสดงที่นี่</p>
+
+              {/* Result State */}
+              {apiResult && !isLoading && !error && (
+                <div className="space-y-6 animate-in fade-in duration-500">
+                  
+                    {/* --- 1. ผลการทำนายรูปล่าสุด --- */}
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-emerald-100">
+                        <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3 border-b pb-2">
+                            ผลวิเคราะห์รูปนี้ (Predicted)
+                        </h3>
+                        <ul className="space-y-3">
+                            {apiResult.predicted?.slice(0, 3).map(([sciName, score], idx) => (
+                                <li key={idx} className="flex justify-between items-center">
+                                    <div>
+                                        <div className="font-bold text-slate-800">{getThaiName(sciName)}</div>
+                                        <div className="text-xs text-slate-500 italic">{sciName}</div>
+                                    </div>
+                                    <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded-full">
+                                        {(parseFloat(score) * 100).toFixed(0)}%
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    {/* --- 2. ผลรวม (Overall) --- */}
+                    <div className="bg-gradient-to-br from-slate-100 to-white p-4 rounded-lg shadow-inner border border-slate-200">
+                        <div className="flex justify-between items-center mb-3 border-b border-slate-300 pb-2">
+                            <h3 className="text-sm font-bold text-slate-600 uppercase tracking-wider">
+                                ผลสรุปสะสม (Overall)
+                            </h3>
+                            <span className="text-xs bg-slate-600 text-white px-2 py-0.5 rounded">
+                                จาก {apiResult.count} รูป
+                            </span>
+                        </div>
+                        
+                        <ul className="space-y-3">
+                             {apiResult.overall?.slice(0, 3).map(([sciName, score], idx) => (
+                                <li key={idx} className="relative">
+                                    {/* Progress Bar Background */}
+                                    <div className="flex justify-between items-center z-10 relative mb-1">
+                                        <span className="font-semibold text-slate-800 text-sm">{getThaiName(sciName)}</span>
+                                        <span className="text-slate-600 text-sm font-bold">{(parseFloat(score) * 100).toFixed(1)}%</span>
+                                    </div>
+                                    <div className="w-full bg-slate-200 rounded-full h-2">
+                                        <div 
+                                            className={`h-2 rounded-full ${idx === 0 ? 'bg-blue-500' : 'bg-slate-400'}`} 
+                                            style={{ width: `${parseFloat(score) * 100}%` }}
+                                        ></div>
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 text-right mt-0.5">{sciName}</div>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    <div className="text-center text-xs text-slate-400 mt-2">
+                        Token: {apiResult.token.substring(0, 19).replace('T', ' ')}...
+                    </div>
+
+                </div>
+              )}
+
+              {/* Empty State */}
+              {!isLoading && !error && !apiResult && (
+                <div className="text-center text-slate-500 flex flex-col items-center justify-center h-full">
+                  <p className="mb-2">ยังไม่มีข้อมูลการระบุพันธุ์ไม้</p>
+                  <p className="text-sm">อัปโหลดภาพเพื่อเริ่มวิเคราะห์</p>
                 </div>
               )}
             </div>
-
-            {/* History section has been removed as the new backend doesn't support session history */}
-            
           </div>
         </div>
       </div>
@@ -363,9 +442,6 @@ const AiTaxonomyPage: React.FC = () => {
         <h2 className="text-2xl font-bold text-slate-800 mb-4">
           ชนิดพันธุ์ที่รองรับ (60 ชนิด)
         </h2>
-        <p className="text-sm text-slate-600 mb-4">
-          (หมายเหตุ: รายการนี้เป็นของระบบเดิม Gemini AI สามารถพยายามระบุพันธุ์ไม้นอกเหนือจากรายการนี้ได้)
-        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
           {supportedSpecies.map((species) => (
             <div key={species.scientific}>
