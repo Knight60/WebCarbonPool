@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadIcon, CameraIcon, RefreshIcon } from '../components/icons'; // สมมติว่ามี RefreshIcon หรือใช้ text แทนได้
+import { UploadIcon, CameraIcon } from '../components/icons';
 
 // --- Interface สำหรับ Response จาก VertexAiTaxonomy.js ---
 interface TaxonomyResponse {
@@ -9,8 +9,16 @@ interface TaxonomyResponse {
   predicted?: [string, string][]; // [ScientificName, Score]
   overall?: [string, string][];    // [ScientificName, Score]
   count?: number;
-  error?: string;                 // กรณีไม่ใช่รูปต้นไม้
+  error?: string;
   details?: string;
+}
+
+// --- Interface สำหรับเก็บประวัติ (History) ---
+interface HistoryItem {
+  id: string;
+  timestamp: Date;
+  imageUrl: string;
+  result: TaxonomyResponse;
 }
 
 // --- START: Supported Species Data ---
@@ -81,10 +89,10 @@ const supportedSpecies = [
 // Helper function to match scientific name to Thai common name
 const getThaiName = (sciName: string) => {
     const found = supportedSpecies.find(s => s.scientific.toLowerCase() === sciName.toLowerCase());
-    return found ? found.common : sciName; // ถ้าไม่เจอให้โชว์ชื่อวิทย์
+    return found ? found.common : sciName;
 };
 
-// --- START: File Conversion Function (Unchanged) ---
+// --- START: File Conversion Function ---
 const convertFileToJpg = (file: File): Promise<File> => {
   return new Promise((resolve, reject) => {
     if (file.type === 'image/jpeg') {
@@ -139,10 +147,13 @@ const AiTaxonomyPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
-  // New State Logic for VertexAiTaxonomy
-  const [token, setToken] = useState<string>('new'); // Default to 'new'
+  // State for VertexAiTaxonomy Logic
+  const [token, setToken] = useState<string>('new'); 
   const [apiResult, setApiResult] = useState<TaxonomyResponse | null>(null);
   
+  // State for History
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (file: File | null | undefined) => {
@@ -154,9 +165,6 @@ const AiTaxonomyPage: React.FC = () => {
     }
     setIsLoading(true);
     setError(null);
-    // Don't clear apiResult immediately if we want to show previous overall stats, 
-    // but usually it's better to clear "current" result perception. 
-    // For now, let's keep previous result visible until new one arrives or error.
     
     try {
       const jpgFile = await convertFileToJpg(file);
@@ -186,8 +194,9 @@ const AiTaxonomyPage: React.FC = () => {
   const handleResetSession = () => {
     setToken('new');
     setApiResult(null);
+    setHistory([]); // Clear history
     handleRemoveFile();
-    alert('รีเซ็ตเซสชันเรียบร้อย เริ่มต้นการจำแนกชุดใหม่');
+    // alert('รีเซ็ตเซสชันเรียบร้อย เริ่มต้นการจำแนกชุดใหม่');
   };
 
   const triggerFileInput = () => {
@@ -213,12 +222,12 @@ const AiTaxonomyPage: React.FC = () => {
 
     const formData = new FormData();
     formData.append('image', image);
-    formData.append('type', 'bark'); // Default or add UI selector for 'leaf'/'bark'
+    formData.append('type', 'bark'); 
 
     try {
-      // Use the current token (or 'new' if it's the first time)
-      const url = `http://localhost:8888/ai/taxonomy/${token}`;
-      
+      const url = `/ai/taxonomy/${token}`;
+      //const url = `http://localhost:8888/ai/taxonomy/${token}`;
+
       const response = await fetch(url, {
         method: 'POST',
         body: formData,
@@ -227,22 +236,30 @@ const AiTaxonomyPage: React.FC = () => {
       const data: TaxonomyResponse = await response.json();
 
       if (!response.ok) {
-        // Handle HTTP errors
         throw new Error(`Server error: ${response.status}`);
       }
 
-      // Update Token from response (for continuity)
       if (data.token) {
         setToken(data.token);
       }
 
-      // Check for Logic Error (e.g. Not a plant)
       if (data.error) {
-        setError(data.error); // e.g. "ไม่ใช่รูปของต้นไม้"
-        // Keep the token to allow retry in same session if needed, 
-        // or you might want to force reset.
+        setError(data.error); 
       } else {
         setApiResult(data);
+        
+        // ❗️ UPDATE HISTORY Logic
+        if (previewUrl) {
+            const newItem: HistoryItem = {
+                id: Date.now().toString(),
+                timestamp: new Date(),
+                imageUrl: previewUrl,
+                result: data
+            };
+            // Add new item to the beginning of the array
+            setHistory(prev => [newItem, ...prev]);
+        }
+
         clearSubmittedFile();
       }
 
@@ -259,15 +276,14 @@ const AiTaxonomyPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 th-font max-w-4xl mx-auto">
-      <div className="text-center relative">
+    <div className="space-y-6 th-font max-w-5xl mx-auto">
+      <div className="text-center relative pt-4">
         <h1 className="text-3xl font-bold text-slate-800">AI Taxonomy - ระบบจำแนกพันธุ์ไม้</h1>
         <p className="mt-2 text-slate-600">
           อัปโหลดภาพ (เปลือกไม้/ใบไม้) เพื่อระบุชนิดพันธุ์ด้วย Gemini AI
         </p>
-        {/* Session Info */}
-        <div className="absolute top-0 right-0 text-xs text-slate-400 hidden md:block">
-             Session: {token === 'new' ? 'New' : token.substring(0, 16)+'...'}
+        <div className="absolute top-0 right-0 text-xs text-slate-400 hidden md:block bg-slate-100 px-2 py-1 rounded">
+             Session: {token === 'new' ? 'New' : token.substring(0, 19).replace('T', ' ')}
         </div>
       </div>
 
@@ -295,7 +311,7 @@ const AiTaxonomyPage: React.FC = () => {
             {previewUrl && (
               <div className="mt-4 space-y-3">
                 <h3 className="font-semibold mb-2">ภาพที่จะส่งตรวจสอบ:</h3>
-                <img src={previewUrl} alt="Preview" className="rounded-lg w-full h-auto object-cover shadow-md" />
+                <img src={previewUrl} alt="Preview" className="rounded-lg w-full h-64 object-contain bg-slate-100 shadow-md" />
                 <button
                   onClick={handleRemoveFile}
                   className="w-full px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors font-semibold"
@@ -345,11 +361,11 @@ const AiTaxonomyPage: React.FC = () => {
 
           {/* --- RIGHT COLUMN: RESULT --- */}
           <div className="bg-slate-50 p-6 rounded-lg min-h-[300px] flex flex-col">
-            <div className="flex-grow min-h-[150px] flex flex-col justify-center">
+            <div className="flex-grow flex flex-col">
               
               {/* Loading State */}
               {isLoading && (
-                <div className="space-y-4 animate-pulse">
+                <div className="space-y-4 animate-pulse my-auto">
                   <div className="h-6 bg-slate-300 rounded w-3/4 mx-auto"></div>
                   <div className="h-32 bg-slate-200 rounded w-full"></div>
                   <div className="h-4 bg-slate-300 rounded w-1/2 mx-auto"></div>
@@ -358,7 +374,7 @@ const AiTaxonomyPage: React.FC = () => {
 
               {/* Error State */}
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
                     <strong className="font-bold">แจ้งเตือน: </strong>
                     <span className="block sm:inline">{error}</span>
                 </div>
@@ -371,16 +387,16 @@ const AiTaxonomyPage: React.FC = () => {
                     {/* --- 1. ผลการทำนายรูปล่าสุด --- */}
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-emerald-100">
                         <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3 border-b pb-2">
-                            ผลวิเคราะห์รูปนี้ (Predicted)
+                            ผลวิเคราะห์รูปล่าสุด
                         </h3>
                         <ul className="space-y-3">
                             {apiResult.predicted?.slice(0, 3).map(([sciName, score], idx) => (
                                 <li key={idx} className="flex justify-between items-center">
-                                    <div>
-                                        <div className="font-bold text-slate-800">{getThaiName(sciName)}</div>
-                                        <div className="text-xs text-slate-500 italic">{sciName}</div>
+                                    <div className="overflow-hidden">
+                                        <div className="font-bold text-slate-800 truncate">{getThaiName(sciName)}</div>
+                                        <div className="text-xs text-slate-500 italic truncate">{sciName}</div>
                                     </div>
-                                    <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded-full">
+                                    <span className={`text-xs font-bold px-2 py-1 rounded-full ml-2 ${idx === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
                                         {(parseFloat(score) * 100).toFixed(0)}%
                                     </span>
                                 </li>
@@ -392,19 +408,15 @@ const AiTaxonomyPage: React.FC = () => {
                     <div className="bg-gradient-to-br from-slate-100 to-white p-4 rounded-lg shadow-inner border border-slate-200">
                         <div className="flex justify-between items-center mb-3 border-b border-slate-300 pb-2">
                             <h3 className="text-sm font-bold text-slate-600 uppercase tracking-wider">
-                                ผลสรุปสะสม (Overall)
+                                ผลสรุปสะสม ({apiResult.count} รูป)
                             </h3>
-                            <span className="text-xs bg-slate-600 text-white px-2 py-0.5 rounded">
-                                จาก {apiResult.count} รูป
-                            </span>
                         </div>
                         
                         <ul className="space-y-3">
                              {apiResult.overall?.slice(0, 3).map(([sciName, score], idx) => (
                                 <li key={idx} className="relative">
-                                    {/* Progress Bar Background */}
                                     <div className="flex justify-between items-center z-10 relative mb-1">
-                                        <span className="font-semibold text-slate-800 text-sm">{getThaiName(sciName)}</span>
+                                        <span className="font-semibold text-slate-800 text-sm truncate pr-2">{getThaiName(sciName)}</span>
                                         <span className="text-slate-600 text-sm font-bold">{(parseFloat(score) * 100).toFixed(1)}%</span>
                                     </div>
                                     <div className="w-full bg-slate-200 rounded-full h-2">
@@ -413,14 +425,9 @@ const AiTaxonomyPage: React.FC = () => {
                                             style={{ width: `${parseFloat(score) * 100}%` }}
                                         ></div>
                                     </div>
-                                    <div className="text-[10px] text-slate-400 text-right mt-0.5">{sciName}</div>
                                 </li>
                             ))}
                         </ul>
-                    </div>
-
-                    <div className="text-center text-xs text-slate-400 mt-2">
-                        Token: {apiResult.token.substring(0, 19).replace('T', ' ')}...
                     </div>
 
                 </div>
@@ -428,8 +435,9 @@ const AiTaxonomyPage: React.FC = () => {
 
               {/* Empty State */}
               {!isLoading && !error && !apiResult && (
-                <div className="text-center text-slate-500 flex flex-col items-center justify-center h-full">
-                  <p className="mb-2">ยังไม่มีข้อมูลการระบุพันธุ์ไม้</p>
+                <div className="text-center text-slate-500 flex flex-col items-center justify-center h-full min-h-[200px]">
+                  <UploadIcon className="h-12 w-12 text-slate-300 mb-2" />
+                  <p className="mb-1">ยังไม่มีข้อมูลการระบุพันธุ์ไม้</p>
                   <p className="text-sm">อัปโหลดภาพเพื่อเริ่มวิเคราะห์</p>
                 </div>
               )}
@@ -438,6 +446,57 @@ const AiTaxonomyPage: React.FC = () => {
         </div>
       </div>
 
+      {/* --- SECTION: HISTORY --- */}
+      {history.length > 0 && (
+        <div className="bg-white p-6 rounded-xl shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="flex items-center justify-between mb-4 border-b pb-2">
+                <h2 className="text-xl font-bold text-slate-800">
+                    ประวัติการส่งภาพ ({history.length} ภาพ)
+                </h2>
+                {/* ปุ่มล้างประวัติถูกลบออกแล้ว */}
+             </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {history.map((item) => (
+                    <div key={item.id} className="border rounded-lg overflow-hidden shadow-sm bg-white flex flex-col">
+                        {/* Image Thumbnail */}
+                        <div className="h-32 w-full bg-slate-100">
+                             <img src={item.imageUrl} alt="History" className="w-full h-full object-cover" />
+                        </div>
+                        
+                        {/* Result Info */}
+                        <div className="p-2 text-xs flex-grow">
+                            <div className="flex justify-between items-start mb-1">
+                                <span className="text-[10px] text-slate-400">
+                                    {item.timestamp.toLocaleTimeString('th-TH')}
+                                </span>
+                            </div>
+                            
+                            {item.result.predicted && item.result.predicted.length > 0 ? (
+                                <div>
+                                    <div className="font-bold text-slate-800 truncate" title={getThaiName(item.result.predicted[0][0])}>
+                                        {getThaiName(item.result.predicted[0][0])}
+                                    </div>
+                                    <div className="text-slate-500 italic truncate mb-1" title={item.result.predicted[0][0]}>
+                                        {item.result.predicted[0][0]}
+                                    </div>
+                                    <div className="mt-1">
+                                         <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
+                                            {(parseFloat(item.result.predicted[0][1]) * 100).toFixed(0)}%
+                                         </span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-red-500 text-xs">ไม่สามารถระบุได้</div>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+      )}
+
+      {/* Species List Footer */}
       <div className="bg-white p-6 rounded-xl shadow-sm">
         <h2 className="text-2xl font-bold text-slate-800 mb-4">
           ชนิดพันธุ์ที่รองรับ (60 ชนิด)
